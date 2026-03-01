@@ -1,0 +1,21 @@
+:root {
+  --bg: #f1efe8;
+  --ink: #1d2228;
+  --accent: #af4e1c;
+  --card: #fffaf0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", "Avenir Next", sans-serif;
+  background: radial-gradient(circle at 10% 20%, #f8e8c9 0%, var(--bg) 40%, #d9e5ef 100%);
+  color: var(--ink);
+}
+
+a {
+  color: inherit;
+}
