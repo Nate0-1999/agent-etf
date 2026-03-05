@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 from uuid import uuid4
 
 from agent_etf_audit import AuditCouncil
@@ -26,10 +27,11 @@ from agent_etf_contracts.models import (
     StrategyStatus,
     UserPermissionProfile,
 )
-from agent_etf_contracts.store import InMemoryStore
+from agent_etf_contracts.store import StrategyStore, build_store
 from agent_etf_execution import DeterministicStrategyCompiler, ExecutionService
 from agent_etf_llm_gateway import OpenRouterModelService
 from agent_etf_research import ExaSearchProvider, ResearchService
+from agent_etf_research.heavy_metals import derive_heavy_metal_profile
 
 
 def _default_models() -> list[str]:
@@ -41,12 +43,12 @@ def _default_models() -> list[str]:
 
 
 class ControlPlaneService:
-    def __init__(self) -> None:
+    def __init__(self, store: StrategyStore | None = None) -> None:
         max_loops = os.getenv("AUDIT_MAX_RETRY_LOOPS", "3")
         self._max_loops = int(max_loops)
         self._step3_cooldown = int(os.getenv("APPROVAL_STEP3_COOLDOWN_SECONDS", "600"))
 
-        self.store = InMemoryStore()
+        self.store = store or build_store()
         self.broker = IbkrPaperAdapter()
         self.models = OpenRouterModelService(monthly_budget_usd=150.0)
         self.search = ExaSearchProvider()
@@ -89,9 +91,22 @@ class ControlPlaneService:
 
         return gaps
 
+    def _derive_constraints(self, raw_idea: str) -> dict[str, Any]:
+        constraints: dict[str, Any] = {}
+        normalized = raw_idea.lower()
+        if any(token in normalized for token in {"asset", "etf", "investment", "fund"}):
+            constraints["allowed_assets"] = ["etf", "equity", "future"]
+
+        heavy_metal_profile = derive_heavy_metal_profile(raw_idea)
+        if heavy_metal_profile is not None:
+            constraints["periodic_table"] = heavy_metal_profile
+        return constraints
+
     @staticmethod
     def _recommend_cadence(raw_idea: str) -> str | None:
         normalized = raw_idea.lower()
+        if "atomic number" in normalized or "periodic table" in normalized:
+            return "monthly_review"
         if "high frequency" in normalized or "intraday" in normalized:
             return "weekly_review"
         if "thematic" in normalized or "equal weight" in normalized:
@@ -113,15 +128,13 @@ class ControlPlaneService:
             objective=request.raw_idea.strip() if len(request.raw_idea.split()) >= 4 else None,
             cadence_recommendation=self._recommend_cadence(request.raw_idea),
         )
-
-        if "asset" in request.raw_idea.lower() or "etf" in request.raw_idea.lower():
-            idea.constraints["allowed_assets"] = ["etf", "equity", "future"]
+        idea.constraints.update(self._derive_constraints(request.raw_idea))
 
         gaps = self._find_gaps(idea)
         idea.clarity_score = self._compute_clarity(gaps=gaps)
 
-        self.store.ideas[idea_id] = idea
-        self.store.idea_gaps[idea_id] = gaps
+        self.store.save_idea(idea)
+        self.store.save_idea_gaps(idea_id, gaps)
 
         return IdeaStatusResponse(
             idea=idea,
@@ -130,10 +143,9 @@ class ControlPlaneService:
         )
 
     def clarify_idea(self, idea_id: str, request: ClarifyIdeaRequest) -> IdeaStatusResponse:
-        if idea_id not in self.store.ideas:
+        idea = self.store.get_idea(idea_id)
+        if idea is None:
             raise KeyError("Idea not found")
-
-        idea = self.store.ideas[idea_id]
         answers = request.answers
 
         if "objective" in answers:
@@ -152,11 +164,17 @@ class ControlPlaneService:
         if "exclusions" in answers and isinstance(answers["exclusions"], list):
             idea.exclusions = [str(item) for item in answers["exclusions"]]
 
+        source_text = idea.objective or idea.raw_idea
+        derived_constraints = self._derive_constraints(source_text)
+        for key, value in derived_constraints.items():
+            if key not in idea.constraints:
+                idea.constraints[key] = value
+
         gaps = self._find_gaps(idea)
         idea.clarity_score = self._compute_clarity(gaps=gaps)
 
-        self.store.ideas[idea_id] = idea
-        self.store.idea_gaps[idea_id] = gaps
+        self.store.save_idea(idea)
+        self.store.save_idea_gaps(idea_id, gaps)
 
         return IdeaStatusResponse(
             idea=idea,
@@ -165,11 +183,10 @@ class ControlPlaneService:
         )
 
     def idea_status(self, idea_id: str) -> IdeaStatusResponse:
-        if idea_id not in self.store.ideas:
+        idea = self.store.get_idea(idea_id)
+        if idea is None:
             raise KeyError("Idea not found")
-
-        idea = self.store.ideas[idea_id]
-        gaps = self.store.idea_gaps.get(idea_id, [])
+        gaps = self.store.get_idea_gaps(idea_id)
         return IdeaStatusResponse(
             idea=idea,
             gaps=gaps,
@@ -177,16 +194,25 @@ class ControlPlaneService:
         )
 
     def _ensure_permissions(self, user_id: str) -> UserPermissionProfile:
-        profile = self.store.permissions.get(user_id)
+        profile = self.store.get_permission(user_id)
         if profile is None:
             profile = self.broker.link_account(user_id=user_id, account_id="paper-default")
-            self.store.permissions[user_id] = profile
+            self.store.save_permission(profile)
         return profile
 
     @staticmethod
     def _normalize_name(text: str) -> str:
         clean = " ".join(text.strip().split())
         return clean[:72] if clean else "Untitled Strategy"
+
+    def _build_strategy_name(self, idea: IdeaSpec) -> str:
+        periodic_table = idea.constraints.get("periodic_table")
+        if isinstance(periodic_table, dict):
+            ranges = periodic_table.get("atomic_ranges", [])
+            if isinstance(ranges, list) and ranges:
+                label = " & ".join(f"{start}-{end}" for start, end in ranges)
+                return f"Heavy Metals Atomic {label}"[:72]
+        return self._normalize_name(idea.raw_idea)
 
     def create_strategy_from_idea(self, idea_id: str) -> CreateStrategyFromIdeaResponse:
         status = self.idea_status(idea_id)
@@ -205,7 +231,7 @@ class ControlPlaneService:
         council = AuditCouncil(provider=self.models, models=self._model_list)
         result = council.evaluate(stage="candidate_ranking", payload=candidate_payload)
         if not result.passed:
-            self.store.audits[idea_id] = result.reports
+            self.store.save_audit_reports(idea_id, result.reports)
             raise ValueError("Audit council dissent while generating strategy proposal")
 
         strategy_id = str(uuid4())
@@ -213,7 +239,7 @@ class ControlPlaneService:
             id=strategy_id,
             user_id=idea.user_id,
             idea_id=idea.id,
-            name=self._normalize_name(idea.raw_idea),
+            name=self._build_strategy_name(idea),
             status=StrategyStatus.draft,
             universe=candidates,
             weighting_method="equal_weight",
@@ -223,9 +249,9 @@ class ControlPlaneService:
 
         artifact = self.compiler.compile(strategy)
 
-        self.store.strategies[strategy_id] = strategy
-        self.store.strategy_artifacts[strategy_id] = artifact
-        self.store.audits[strategy_id] = result.reports
+        self.store.save_strategy(strategy)
+        self.store.save_strategy_artifact(artifact)
+        self.store.save_audit_reports(strategy_id, result.reports)
 
         bullets = [
             f"Strategy name: {strategy.name}",
@@ -234,6 +260,14 @@ class ControlPlaneService:
             f"Cadence recommendation: {idea.cadence_recommendation}",
             "Order actions require 3-step approval with cooldown",
         ]
+        periodic_table = idea.constraints.get("periodic_table")
+        if isinstance(periodic_table, dict):
+            element_symbols = periodic_table.get("element_symbols", [])
+            if isinstance(element_symbols, list) and element_symbols:
+                bullets.insert(
+                    1,
+                    "Target elements: " + ", ".join(str(symbol) for symbol in element_symbols),
+                )
 
         return CreateStrategyFromIdeaResponse(
             strategy=strategy,
@@ -244,7 +278,7 @@ class ControlPlaneService:
     def set_strategy_status(self, strategy_id: str, approved: bool) -> StrategyDefinition:
         strategy = self._strategy(strategy_id)
         strategy.status = StrategyStatus.active if approved else StrategyStatus.paused
-        self.store.strategies[strategy_id] = strategy
+        self.store.save_strategy(strategy)
         return strategy
 
     def run_backtest(self, strategy_id: str, request: BacktestRequest) -> BacktestRun:
@@ -254,13 +288,14 @@ class ControlPlaneService:
             min_years=request.min_years,
             override_min_history=request.override_min_history,
         )
-        self.store.backtests[strategy_id] = run
+        self.store.save_backtest(run)
         return run
 
     def _strategy(self, strategy_id: str) -> StrategyDefinition:
-        if strategy_id not in self.store.strategies:
+        strategy = self.store.get_strategy(strategy_id)
+        if strategy is None:
             raise KeyError("Strategy not found")
-        return self.store.strategies[strategy_id]
+        return strategy
 
     @staticmethod
     def _equal_weights(strategy: StrategyDefinition) -> dict[str, float]:
@@ -301,8 +336,8 @@ class ControlPlaneService:
                     target_allocations=self._equal_weights(strategy),
                     cooldown_seconds=self._step3_cooldown,
                 )
-                self.store.approval_bundles[bundle.id] = bundle
-                self.store.audits[strategy.id] = all_reports
+                self.store.save_approval_bundle(bundle)
+                self.store.save_audit_reports(strategy.id, all_reports)
                 return ManualActionResponse(
                     strategy_id=strategy.id,
                     action=action,
@@ -321,8 +356,8 @@ class ControlPlaneService:
             cooldown_seconds=self._step3_cooldown,
         )
         blocked_bundle.status = blocked_bundle.status.rejected
-        self.store.approval_bundles[blocked_bundle.id] = blocked_bundle
-        self.store.audits[strategy.id] = all_reports
+        self.store.save_approval_bundle(blocked_bundle)
+        self.store.save_audit_reports(strategy.id, all_reports)
 
         return ManualActionResponse(
             strategy_id=strategy.id,
@@ -336,29 +371,30 @@ class ControlPlaneService:
     def approval_step1(self, bundle_id: str, token: str) -> ApprovalBundle:
         bundle = self._bundle(bundle_id)
         updated = self.execution.apply_step1(bundle=bundle, token=token)
-        self.store.approval_bundles[bundle_id] = updated
+        self.store.save_approval_bundle(updated)
         return updated
 
     def approval_step2(self, bundle_id: str, token: str) -> ApprovalBundle:
         bundle = self._bundle(bundle_id)
         updated = self.execution.apply_step2(bundle=bundle, token=token)
-        self.store.approval_bundles[bundle_id] = updated
+        self.store.save_approval_bundle(updated)
         return updated
 
     def approval_step3(self, bundle_id: str, token: str) -> ApprovalBundle:
         bundle = self._bundle(bundle_id)
         updated = self.execution.apply_step3(bundle=bundle, token=token)
-        self.store.approval_bundles[bundle_id] = updated
+        self.store.save_approval_bundle(updated)
         return updated
 
     def _bundle(self, bundle_id: str) -> ApprovalBundle:
-        if bundle_id not in self.store.approval_bundles:
+        bundle = self.store.get_approval_bundle(bundle_id)
+        if bundle is None:
             raise KeyError("Approval bundle not found")
-        return self.store.approval_bundles[bundle_id]
+        return bundle
 
     def link_ibkr(self, request: BrokerLinkRequest) -> UserPermissionProfile:
         profile = self.broker.link_account(user_id=request.user_id, account_id=request.account_id)
-        self.store.permissions[request.user_id] = profile
+        self.store.save_permission(profile)
         return profile
 
     def get_permissions(self, user_id: str) -> UserPermissionProfile:
@@ -367,17 +403,16 @@ class ControlPlaneService:
     def set_user_limits(self, user_id: str, request: BrokerLimitsRequest) -> UserPermissionProfile:
         profile = self._ensure_permissions(user_id)
         profile.user_limits.update(request.user_limits)
-        self.store.permissions[user_id] = profile
+        self.store.save_permission(profile)
         return profile
 
     def portfolio_performance(self, portfolio_id: str) -> PortfolioPerformanceResponse:
-        strategy_metrics = {
-            strategy_id: run.metrics for strategy_id, run in self.store.backtests.items()
-        }
+        backtests = self.store.list_backtests()
+        strategy_metrics = {strategy_id: run.metrics for strategy_id, run in backtests.items()}
 
         benchmark_metrics: dict[str, object] = {}
-        if self.store.backtests:
-            first = next(iter(self.store.backtests.values()))
+        if backtests:
+            first = next(iter(backtests.values()))
             benchmark_metrics = first.benchmark_metrics
 
         return PortfolioPerformanceResponse(

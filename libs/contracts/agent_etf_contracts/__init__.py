@@ -25,7 +25,12 @@ from agent_etf_contracts.models import (
     StrategyStatus,
     UserPermissionProfile,
 )
-from agent_etf_contracts.store import InMemoryStore
+from agent_etf_contracts.store import (
+    InMemoryStore,
+    PostgresStore,
+    StrategyStore,
+    build_store,
+)
 
 __all__ = [
     "ApprovalAction",
@@ -49,9 +54,12 @@ __all__ = [
     "InMemoryStore",
     "ManualActionResponse",
     "PortfolioPerformanceResponse",
+    "PostgresStore",
     "SpecGap",
+    "StrategyStore",
     "StrategyArtifact",
     "StrategyDefinition",
     "StrategyStatus",
     "UserPermissionProfile",
+    "build_store",
 ]

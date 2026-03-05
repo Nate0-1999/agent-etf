@@ -1,6 +1,16 @@
+# ruff: noqa: E402
+
 from __future__ import annotations
 
+import os
+
 from fastapi.testclient import TestClient
+
+from bootstrap_paths import add_project_paths
+
+add_project_paths()
+
+from agent_etf_contracts.store import InMemoryStore, build_store
 
 from apps.api.agent_etf_api.main import app
 from apps.api.agent_etf_api.service import ControlPlaneService
@@ -134,3 +144,39 @@ def test_portfolio_performance_contains_benchmarks() -> None:
     body = perf.json()
     assert "sp500" in body["benchmarks"]
     assert strategy_id in body["strategies"]
+
+
+def test_heavy_metals_atomic_ranges_produce_targeted_universe() -> None:
+    client, _ = new_client()
+
+    response = client.post(
+        "/ideas",
+        json={
+            "user_id": "operator",
+            "raw_idea": (
+                "Create an equal weight heavy metal investment based on the periodic table: "
+                "anything element between atomic number 40-52 and 72-80."
+            ),
+        },
+    )
+    assert response.status_code == 200
+    idea = response.json()["idea"]
+    assert response.json()["ready_for_strategy"] is True
+    assert idea["constraints"]["periodic_table"]["element_symbols"][0] == "Zr"
+
+    strategy = client.post(f"/strategies/from-idea/{idea['id']}")
+    assert strategy.status_code == 200
+    body = strategy.json()
+    symbols = {candidate["symbol"] for candidate in body["strategy"]["universe"]}
+    assert {"PPLT", "PALL", "GLTR", "PL", "PA"}.intersection(symbols)
+    assert "Target elements:" in body["proposal_bullets"][1]
+
+
+def test_build_store_defaults_to_in_memory_when_database_is_unset() -> None:
+    previous = os.environ.pop("DATABASE_URL", None)
+    try:
+        store = build_store()
+    finally:
+        if previous is not None:
+            os.environ["DATABASE_URL"] = previous
+    assert isinstance(store, InMemoryStore)

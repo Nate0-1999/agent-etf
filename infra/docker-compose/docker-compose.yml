@@ -43,6 +43,7 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/agent_etf
       - APPROVAL_STEP3_COOLDOWN_SECONDS=600
       - AUDIT_MAX_RETRY_LOOPS=3
     ports:
@@ -56,6 +57,7 @@ services:
       context: .
       dockerfile: workers/temporal/Dockerfile
     environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/agent_etf
       - TEMPORAL_TARGET=temporal:7233
     depends_on:
       - temporal

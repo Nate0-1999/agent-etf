@@ -1,5 +1,9 @@
 # Migrations
 
-This folder is reserved for Alembic or SQL migration files.
+SQL migrations in this folder are applied in lexical order by:
 
-MVP scaffold currently uses in-memory stores for domain state while interfaces are finalized.
+```bash
+make migrate
+```
+
+`DATABASE_URL` must point at a reachable Postgres instance before running migrations.
