@@ -28,6 +28,8 @@ make test
 make run-api
 ```
 
+For the exact local database access model and security rules, read [docs/runbooks/CLOUD_SQL_PROXY.md](/Users/nateoswalt/agent-etf/docs/runbooks/CLOUD_SQL_PROXY.md) before changing any Cloud SQL networking or local DB setup.
+
 Web app:
 
 ```bash
@@ -62,6 +64,8 @@ make db-proxy
 ```
 
 Then point `DATABASE_URL` at `127.0.0.1:5432`. This keeps local access tied to your Google auth instead of a temporary authorized network entry for your current public IP.
+
+This is not optional documentation. The full operational and security procedure is in [docs/runbooks/CLOUD_SQL_PROXY.md](/Users/nateoswalt/agent-etf/docs/runbooks/CLOUD_SQL_PROXY.md).
 
 ## Safety Notes
 

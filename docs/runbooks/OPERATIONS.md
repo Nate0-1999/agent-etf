@@ -1,5 +1,9 @@
 # Operations Runbook
 
+## Mandatory Reading
+
+- Cloud SQL local access procedure: [CLOUD_SQL_PROXY.md](/Users/nateoswalt/agent-etf/docs/runbooks/CLOUD_SQL_PROXY.md)
+
 ## Start Stack
 
 ```bash
@@ -20,3 +24,4 @@ Worker logs should show polling for task queue `agent-etf`.
 
 - If audit council fails repeatedly, inspect escalation summary logs.
 - If approval step expires, restart approval bundle creation.
+- If the API cannot reach Postgres, do not add a temporary public network allowlist first. Validate the proxy path in [CLOUD_SQL_PROXY.md](/Users/nateoswalt/agent-etf/docs/runbooks/CLOUD_SQL_PROXY.md).
