@@ -6,7 +6,13 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from agent_etf_brokers import BrokerAdapter
-from agent_etf_contracts.models import ApprovalAction, ApprovalBundle, ApprovalStatus
+from agent_etf_contracts.models import (
+    ApprovalAction,
+    ApprovalBundle,
+    ApprovalStatus,
+    OrderPreviewItem,
+    OrderPreviewResponse,
+)
 
 
 class ApprovalStateError(ValueError):
@@ -104,10 +110,10 @@ class ExecutionService:
         self._broker.submit_paper_orders(approved_bundle)
         return approved_bundle
 
-    def order_preview(self, bundle: ApprovalBundle) -> dict[str, object]:
+    def order_preview(self, bundle: ApprovalBundle) -> OrderPreviewResponse:
         preview = self._broker.build_order_preview(bundle)
-        return {
-            "strategy_id": preview.strategy_id,
-            "action": preview.action,
-            "orders": preview.orders,
-        }
+        return OrderPreviewResponse(
+            strategy_id=preview.strategy_id,
+            action=preview.action,
+            orders=[OrderPreviewItem.model_validate(order) for order in preview.orders],
+        )

@@ -53,6 +53,9 @@ class StrategyStore(Protocol):
     def get_strategy(self, strategy_id: str) -> StrategyDefinition | None:
         ...
 
+    def list_strategies(self) -> list[StrategyDefinition]:
+        ...
+
     def save_strategy_artifact(self, artifact: StrategyArtifact) -> None:
         ...
 
@@ -78,6 +81,9 @@ class StrategyStore(Protocol):
         ...
 
     def get_approval_bundle(self, bundle_id: str) -> ApprovalBundle | None:
+        ...
+
+    def list_approval_bundles(self, strategy_id: str) -> list[ApprovalBundle]:
         ...
 
     def save_permission(self, profile: UserPermissionProfile) -> None:
@@ -116,6 +122,13 @@ class InMemoryStore(StrategyStore):
     def get_strategy(self, strategy_id: str) -> StrategyDefinition | None:
         return self.strategies.get(strategy_id)
 
+    def list_strategies(self) -> list[StrategyDefinition]:
+        return sorted(
+            self.strategies.values(),
+            key=lambda strategy: strategy.created_at,
+            reverse=True,
+        )
+
     def save_strategy_artifact(self, artifact: StrategyArtifact) -> None:
         self.strategy_artifacts[artifact.strategy_id] = artifact
 
@@ -142,6 +155,14 @@ class InMemoryStore(StrategyStore):
 
     def get_approval_bundle(self, bundle_id: str) -> ApprovalBundle | None:
         return self.approval_bundles.get(bundle_id)
+
+    def list_approval_bundles(self, strategy_id: str) -> list[ApprovalBundle]:
+        bundles = [
+            bundle
+            for bundle in self.approval_bundles.values()
+            if bundle.strategy_id == strategy_id
+        ]
+        return sorted(bundles, key=lambda bundle: bundle.created_at, reverse=True)
 
     def save_permission(self, profile: UserPermissionProfile) -> None:
         self.permissions[profile.user_id] = profile
@@ -235,6 +256,13 @@ class PostgresStore(StrategyStore):
             return None
         return StrategyDefinition.model_validate(payload)
 
+    def list_strategies(self) -> list[StrategyDefinition]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT payload FROM strategies ORDER BY updated_at DESC"
+            ).fetchall()
+        return [StrategyDefinition.model_validate(row["payload"]) for row in rows]
+
     def save_strategy_artifact(self, artifact: StrategyArtifact) -> None:
         self._upsert_payload(
             "strategy_artifacts",
@@ -312,6 +340,19 @@ class PostgresStore(StrategyStore):
         if payload is None:
             return None
         return ApprovalBundle.model_validate(payload)
+
+    def list_approval_bundles(self, strategy_id: str) -> list[ApprovalBundle]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT payload
+                FROM approval_bundles
+                WHERE (payload ->> 'strategy_id') = %s
+                ORDER BY updated_at DESC
+                """,
+                (strategy_id,),
+            ).fetchall()
+        return [ApprovalBundle.model_validate(row["payload"]) for row in rows]
 
     def save_permission(self, profile: UserPermissionProfile) -> None:
         self._upsert_payload(

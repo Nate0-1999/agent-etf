@@ -22,12 +22,26 @@ from agent_etf_contracts.models import (
     ManualActionResponse,
     PortfolioPerformanceResponse,
     StrategyDefinition,
+    StrategyListResponse,
+    StrategySummaryResponse,
 )
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.agent_etf_api.service import ControlPlaneService
 
 app = FastAPI(title="agent-etf API", version="0.1.0")
+allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 service = ControlPlaneService()
 
 
@@ -65,6 +79,19 @@ def create_strategy_from_idea(idea_id: str) -> CreateStrategyFromIdeaResponse:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/strategies", response_model=StrategyListResponse)
+def list_strategies() -> StrategyListResponse:
+    return service.list_strategies()
+
+
+@app.get("/strategies/{strategy_id}", response_model=StrategySummaryResponse)
+def get_strategy(strategy_id: str) -> StrategySummaryResponse:
+    try:
+        return service.strategy_summary(strategy_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/strategies/{strategy_id}/approve-create", response_model=StrategyDefinition)

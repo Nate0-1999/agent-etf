@@ -14,6 +14,7 @@ node_modules/
 .next/
 out/
 dist/
+*.tsbuildinfo
 generated_strategies/
 *.log
 .DS_Store

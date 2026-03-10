@@ -24,7 +24,10 @@ from agent_etf_contracts.models import (
     PortfolioPerformanceResponse,
     SpecGap,
     StrategyDefinition,
+    StrategyListItem,
+    StrategyListResponse,
     StrategyStatus,
+    StrategySummaryResponse,
     UserPermissionProfile,
 )
 from agent_etf_contracts.store import StrategyStore, build_store
@@ -214,6 +217,25 @@ class ControlPlaneService:
                 return f"Heavy Metals Atomic {label}"[:72]
         return self._normalize_name(idea.raw_idea)
 
+    @staticmethod
+    def _proposal_bullets(strategy: StrategyDefinition, idea: IdeaSpec) -> list[str]:
+        bullets = [
+            f"Strategy name: {strategy.name}",
+            f"Universe candidates: {len(strategy.universe)}",
+            f"Weighting: {strategy.weighting_method}",
+            f"Cadence recommendation: {idea.cadence_recommendation}",
+            "Order actions require 3-step approval with cooldown",
+        ]
+        periodic_table = idea.constraints.get("periodic_table")
+        if isinstance(periodic_table, dict):
+            element_symbols = periodic_table.get("element_symbols", [])
+            if isinstance(element_symbols, list) and element_symbols:
+                bullets.insert(
+                    1,
+                    "Target elements: " + ", ".join(str(symbol) for symbol in element_symbols),
+                )
+        return bullets
+
     def create_strategy_from_idea(self, idea_id: str) -> CreateStrategyFromIdeaResponse:
         status = self.idea_status(idea_id)
         if not status.ready_for_strategy:
@@ -253,26 +275,10 @@ class ControlPlaneService:
         self.store.save_strategy_artifact(artifact)
         self.store.save_audit_reports(strategy_id, result.reports)
 
-        bullets = [
-            f"Strategy name: {strategy.name}",
-            f"Universe candidates: {len(strategy.universe)}",
-            f"Weighting: {strategy.weighting_method}",
-            f"Cadence recommendation: {idea.cadence_recommendation}",
-            "Order actions require 3-step approval with cooldown",
-        ]
-        periodic_table = idea.constraints.get("periodic_table")
-        if isinstance(periodic_table, dict):
-            element_symbols = periodic_table.get("element_symbols", [])
-            if isinstance(element_symbols, list) and element_symbols:
-                bullets.insert(
-                    1,
-                    "Target elements: " + ", ".join(str(symbol) for symbol in element_symbols),
-                )
-
         return CreateStrategyFromIdeaResponse(
             strategy=strategy,
             audits=result.reports,
-            proposal_bullets=bullets,
+            proposal_bullets=self._proposal_bullets(strategy=strategy, idea=idea),
         )
 
     def set_strategy_status(self, strategy_id: str, approved: bool) -> StrategyDefinition:
@@ -296,6 +302,49 @@ class ControlPlaneService:
         if strategy is None:
             raise KeyError("Strategy not found")
         return strategy
+
+    def list_strategies(self) -> StrategyListResponse:
+        items: list[StrategyListItem] = []
+        for strategy in self.store.list_strategies():
+            latest_backtest = self.store.get_backtest(strategy.id)
+            items.append(
+                StrategyListItem(
+                    id=strategy.id,
+                    name=strategy.name,
+                    status=strategy.status,
+                    created_at=strategy.created_at,
+                    universe_size=len(strategy.universe),
+                    last_backtest_cagr=None
+                    if latest_backtest is None
+                    else latest_backtest.metrics.cagr,
+                )
+            )
+        return StrategyListResponse(strategies=items)
+
+    def strategy_summary(self, strategy_id: str) -> StrategySummaryResponse:
+        strategy = self._strategy(strategy_id)
+        idea = self.store.get_idea(strategy.idea_id)
+        audits = self.store.get_audit_reports(strategy.id)
+        latest_backtest = self.store.get_backtest(strategy.id)
+        bundles = self.store.list_approval_bundles(strategy.id)
+        latest_bundle = bundles[0] if bundles else None
+        order_preview = None
+        if latest_bundle is not None:
+            preview = self.execution.order_preview(latest_bundle)
+            order_preview = preview
+
+        return StrategySummaryResponse(
+            strategy=strategy,
+            idea=idea,
+            artifact=self.store.get_strategy_artifact(strategy.id),
+            audits=audits,
+            proposal_bullets=[]
+            if idea is None
+            else self._proposal_bullets(strategy=strategy, idea=idea),
+            latest_backtest=latest_backtest,
+            latest_bundle=latest_bundle,
+            latest_order_preview=order_preview,
+        )
 
     @staticmethod
     def _equal_weights(strategy: StrategyDefinition) -> dict[str, float]:

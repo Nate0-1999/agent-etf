@@ -145,6 +145,18 @@ class ApprovalBundleResponse(BaseModel):
     bundle: ApprovalBundle
 
 
+class OrderPreviewItem(BaseModel):
+    symbol: str
+    target_weight: float
+    action: str
+
+
+class OrderPreviewResponse(BaseModel):
+    strategy_id: str
+    action: str
+    orders: list[OrderPreviewItem]
+
+
 class BacktestRequest(BaseModel):
     min_years: int = 10
     override_min_history: bool = False
@@ -170,6 +182,30 @@ class PortfolioPerformanceResponse(BaseModel):
     portfolio_id: str
     strategies: dict[str, BacktestMetrics]
     benchmarks: dict[str, BacktestMetrics]
+
+
+class StrategyListItem(BaseModel):
+    id: str
+    name: str
+    status: StrategyStatus
+    created_at: datetime
+    universe_size: int
+    last_backtest_cagr: float | None = None
+
+
+class StrategyListResponse(BaseModel):
+    strategies: list[StrategyListItem]
+
+
+class StrategySummaryResponse(BaseModel):
+    strategy: StrategyDefinition
+    idea: IdeaSpec | None = None
+    artifact: StrategyArtifact | None = None
+    audits: list[AuditReport] = Field(default_factory=list)
+    proposal_bullets: list[str] = Field(default_factory=list)
+    latest_backtest: BacktestRun | None = None
+    latest_bundle: ApprovalBundle | None = None
+    latest_order_preview: OrderPreviewResponse | None = None
 
 
 class ManualActionResponse(BaseModel):

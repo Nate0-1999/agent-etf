@@ -172,6 +172,32 @@ def test_heavy_metals_atomic_ranges_produce_targeted_universe() -> None:
     assert "Target elements:" in body["proposal_bullets"][1]
 
 
+def test_strategy_list_and_summary_expose_dashboard_data() -> None:
+    client, _ = new_client()
+    strategy_id = seed_strategy(client)
+
+    backtest = client.post(
+        f"/strategies/{strategy_id}/backtest",
+        json={"min_years": 10, "override_min_history": False},
+    )
+    assert backtest.status_code == 200
+
+    rebalance = client.post(f"/strategies/{strategy_id}/manual-rebalance")
+    assert rebalance.status_code == 200
+
+    listing = client.get("/strategies")
+    assert listing.status_code == 200
+    assert any(item["id"] == strategy_id for item in listing.json()["strategies"])
+
+    summary = client.get(f"/strategies/{strategy_id}")
+    assert summary.status_code == 200
+    body = summary.json()
+    assert body["strategy"]["id"] == strategy_id
+    assert body["latest_backtest"]["metrics"]["cagr"] is not None
+    assert body["latest_bundle"]["strategy_id"] == strategy_id
+    assert len(body["latest_order_preview"]["orders"]) > 0
+
+
 def test_build_store_defaults_to_in_memory_when_database_is_unset() -> None:
     previous = os.environ.pop("DATABASE_URL", None)
     try:

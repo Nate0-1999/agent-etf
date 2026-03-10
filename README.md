@@ -21,22 +21,21 @@ Paper-first, safety-first agentic workflow for turning user investment ideas int
 
 ```bash
 make install-py
-cp .env.example .env
+make install-web
 make db-proxy
 make migrate
 make test
 make run-api
+make run-web
 ```
 
 For the exact local database access model and security rules, read [docs/runbooks/CLOUD_SQL_PROXY.md](/Users/nateoswalt/agent-etf/docs/runbooks/CLOUD_SQL_PROXY.md) before changing any Cloud SQL networking or local DB setup.
 
-Web app:
+Local URLs:
 
-```bash
-cd apps/web
-npm install
-npm run dev
-```
+- API: `http://127.0.0.1:8000`
+- Web: `http://localhost:3000`
+- The web dashboard includes a one-click heavy-metals draft flow and will also load saved strategies from Postgres on refresh.
 
 Docker dev stack:
 
