@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
 from typing import cast
 
 from bootstrap_paths import add_project_paths
@@ -37,6 +39,7 @@ from agent_etf_contracts.models import (
     ModelProposalListResponse,
     ModelRefreshResponse,
     PortfolioPerformanceResponse,
+    RuntimeStatusResponse,
     StrategyDefinition,
     StrategyListResponse,
     StrategySummaryResponse,
@@ -52,7 +55,26 @@ from apps.api.agent_etf_api.observability import (
 )
 from apps.api.agent_etf_api.service import ControlPlaneService
 
-app = FastAPI(title="Agentic Indexing API", version="0.2.0")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    print(
+        json.dumps(
+            {
+                "type": "api_startup",
+                "service": "agentic-indexing-api",
+                "profile": os.getenv("AGENTIC_PROFILE", "manual"),
+                "runtime_build_id": os.getenv("AGENTIC_RUNTIME_BUILD_ID", "dev"),
+                "database_configured": bool(os.getenv("DATABASE_URL")),
+                "dev_routes_enabled": os.getenv("AGENTIC_ENV", "development") != "production",
+            }
+        ),
+        flush=True,
+    )
+    yield
+
+
+app = FastAPI(title="Agentic Indexing API", version="0.2.0", lifespan=lifespan)
 allowed_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -115,6 +137,17 @@ async def request_observability(
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/runtime/status", response_model=RuntimeStatusResponse)
+def runtime_status() -> RuntimeStatusResponse:
+    return RuntimeStatusResponse(
+        service="agentic-indexing-api",
+        profile=os.getenv("AGENTIC_PROFILE", "manual"),
+        runtime_build_id=os.getenv("AGENTIC_RUNTIME_BUILD_ID", "dev"),
+        database_configured=bool(os.getenv("DATABASE_URL")),
+        dev_routes_enabled=os.getenv("AGENTIC_ENV", "development") != "production",
+    )
 
 
 @app.post("/ideas", response_model=IdeaStatusResponse)

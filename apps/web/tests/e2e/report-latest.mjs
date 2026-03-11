@@ -30,6 +30,15 @@ for (const scenario of scenarios.filter((entry) => entry.isDirectory())) {
       const summary = await fs.readFile(summaryPath, 'utf8');
       console.log(summary.trim());
       console.log('');
+      try {
+        const summaryJson = JSON.parse(await fs.readFile(path.join(scenarioPath, project.name, 'summary.json'), 'utf8'));
+        if (summaryJson.failureClassification && summaryJson.failureClassification !== 'none') {
+          console.log(`Failure classification: ${summaryJson.failureClassification}`);
+          console.log('');
+        }
+      } catch {
+        // ignore missing structured summaries
+      }
     } catch {
       // ignore missing summaries
     }

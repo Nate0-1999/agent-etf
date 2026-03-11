@@ -442,3 +442,11 @@ class DevEvent(BaseModel):
 
 class DevEventListResponse(BaseModel):
     events: list[DevEvent] = Field(default_factory=list)
+
+
+class RuntimeStatusResponse(BaseModel):
+    service: str
+    profile: str
+    runtime_build_id: str
+    database_configured: bool
+    dev_routes_enabled: bool

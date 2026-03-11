@@ -20,6 +20,7 @@ import type {
   ModelProposalListResponse,
   ModelRefreshResponse,
   PendingModelSetProposal,
+  RuntimeStatus,
   StrategySummaryResponse,
   TimeframePerformance,
 } from "../lib/types";
@@ -29,7 +30,7 @@ import {
   publishVerificationState,
 } from "../lib/verification";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+const API_BASE = "/api";
 const SAVED_INDEXES_TAB = "saved-indexes";
 const OPEN_TABS_KEY = "agentic-indexing.open-tabs";
 const ACTIVE_TAB_KEY = "agentic-indexing.active-tab";
@@ -37,14 +38,38 @@ const ACTIVE_TAB_KEY = "agentic-indexing.active-tab";
 type SessionDetailMap = Record<string, IdeationSessionDetailResponse>;
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(getTestRunId() ? { "X-Test-Run-Id": getTestRunId() ?? "" } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
+  const requestBody =
+    typeof init?.body === "string"
+      ? init.body
+      : init?.body instanceof URLSearchParams
+        ? init.body.toString()
+        : null;
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: {
+        ...(requestBody ? { "Content-Type": "application/json" } : {}),
+        ...(getTestRunId() ? { "X-Test-Run-Id": getTestRunId() ?? "" } : {}),
+        ...(init?.headers ?? {}),
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown browser fetch failure";
+    appendApiEvent({
+      timestamp: new Date().toISOString(),
+      path,
+      method: init?.method ?? "GET",
+      status: 0,
+      requestId: null,
+      proxyRequestId: null,
+      backendRequestId: null,
+      requestUrl: `${API_BASE}${path}`,
+      requestBody,
+      testRunId: getTestRunId(),
+    });
+    throw new Error(`Browser request failed before the app proxy could respond: ${message}`);
+  }
 
   appendApiEvent({
     timestamp: new Date().toISOString(),
@@ -52,6 +77,10 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
     method: init?.method ?? "GET",
     status: response.status,
     requestId: response.headers.get("X-Request-Id"),
+    proxyRequestId: response.headers.get("X-Proxy-Request-Id"),
+    backendRequestId: response.headers.get("X-Backend-Request-Id"),
+    requestUrl: `${API_BASE}${path}`,
+    requestBody,
     testRunId: response.headers.get("X-Test-Run-Id") ?? getTestRunId(),
   });
 
@@ -140,6 +169,7 @@ export function Dashboard() {
   const [selectedIndexId, setSelectedIndexId] = useState<string | null>(null);
   const [indexDetail, setIndexDetail] = useState<IndexDetail | null>(null);
   const [strategySummary, setStrategySummary] = useState<StrategySummaryResponse | null>(null);
+  const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
   const [currentModels, setCurrentModels] = useState<ApprovedModelSet | null>(null);
   const [modelProposals, setModelProposals] = useState<PendingModelSetProposal[]>([]);
   const [showModelAdmin, setShowModelAdmin] = useState(false);
@@ -176,6 +206,11 @@ export function Dashboard() {
     setModelProposals(proposals.proposals.filter((item) => item.status === "pending"));
   }, []);
 
+  const refreshRuntimeStatus = useCallback(async () => {
+    const status = await apiRequest<RuntimeStatus>("/runtime/status");
+    setRuntimeStatus(status);
+  }, []);
+
   const ensureSessionLoaded = useCallback(async (sessionId: string) => {
     const detail = await apiRequest<IdeationSessionDetailResponse>(`/ideation/sessions/${sessionId}`);
     setSessionDetails((current) => ({ ...current, [sessionId]: detail }));
@@ -187,11 +222,14 @@ export function Dashboard() {
     return detail;
   }, []);
 
-  const refreshIndexes = useCallback(async (preferredIndexId?: string) => {
+  const refreshIndexes = useCallback(async (preferredIndexId?: string | null) => {
     const listing = await apiRequest<IndexListResponse>("/indexes");
     setIndexes(listing.indexes);
 
-    const nextSelected = preferredIndexId ?? selectedIndexId ?? listing.indexes[0]?.id ?? null;
+    const nextSelected =
+      preferredIndexId === undefined
+        ? selectedIndexId ?? listing.indexes[0]?.id ?? null
+        : preferredIndexId ?? listing.indexes[0]?.id ?? null;
     setSelectedIndexId(nextSelected);
     if (nextSelected) {
       const detail = await apiRequest<IndexDetail>(`/indexes/${nextSelected}`);
@@ -222,8 +260,8 @@ export function Dashboard() {
   }, []);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([refreshSessions(), refreshIndexes(), refreshModels()]);
-  }, [refreshIndexes, refreshModels, refreshSessions]);
+    await Promise.all([refreshSessions(), refreshIndexes(), refreshModels(), refreshRuntimeStatus()]);
+  }, [refreshIndexes, refreshModels, refreshRuntimeStatus, refreshSessions]);
 
   useEffect(() => {
     void refreshAll().catch((nextError) => {
@@ -254,6 +292,20 @@ export function Dashboard() {
       pendingModelProposalCount: modelProposals.length,
       error,
       isBusy,
+      runtime: runtimeStatus
+        ? {
+            profile: runtimeStatus.profile,
+            apiOrigin: runtimeStatus.apiOrigin,
+            runtimeBuildId: runtimeStatus.runtimeBuildId ? "configured" : "missing",
+            backendHealthy: runtimeStatus.backendHealthy,
+            configurationWarning: runtimeStatus.configurationWarning,
+            latestProxyError:
+              runtimeStatus.latestProxyError?.error ??
+              (runtimeStatus.latestProxyError
+                ? `${runtimeStatus.latestProxyError.method} ${runtimeStatus.latestProxyError.targetUrl}`
+                : null),
+          }
+        : null,
       session: activeSession
         ? {
             title: activeSession.title,
@@ -276,6 +328,7 @@ export function Dashboard() {
     isBusy,
     modelProposals.length,
     openSessions,
+    runtimeStatus,
     selectedIndex,
     showModelAdmin,
   ]);
@@ -459,12 +512,13 @@ export function Dashboard() {
       );
       await refreshSelectedStrategySummary(indexDetail);
       await refreshIndexes(indexDetail.id);
+      await refreshRuntimeStatus();
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : `Failed to prepare ${action}`);
     } finally {
       setIsBusy(false);
     }
-  }, [indexDetail, refreshIndexes, refreshSelectedStrategySummary]);
+  }, [indexDetail, refreshIndexes, refreshRuntimeStatus, refreshSelectedStrategySummary]);
 
   const submitApprovalStep = useCallback(async (step: 1 | 2 | 3) => {
     const bundle = strategySummary?.latest_bundle;
@@ -481,6 +535,7 @@ export function Dashboard() {
       });
       await refreshSelectedStrategySummary();
       await refreshIndexes(indexDetail?.id);
+      await refreshRuntimeStatus();
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : `Failed approval step ${step}`);
     } finally {
@@ -490,6 +545,7 @@ export function Dashboard() {
     approvalTokens,
     indexDetail?.id,
     refreshIndexes,
+    refreshRuntimeStatus,
     refreshSelectedStrategySummary,
     strategySummary?.latest_bundle,
   ]);
@@ -505,13 +561,13 @@ export function Dashboard() {
       setSelectedIndexId(null);
       setIndexDetail(null);
       setStrategySummary(null);
-      await refreshAll();
+      await Promise.all([refreshSessions(), refreshIndexes(null), refreshModels(), refreshRuntimeStatus()]);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to clear local runtime data");
     } finally {
       setIsBusy(false);
     }
-  }, [refreshAll]);
+  }, [refreshIndexes, refreshModels, refreshRuntimeStatus, refreshSessions]);
 
   return (
     <main className="workbookApp" data-testid="workbook-app">
@@ -554,6 +610,44 @@ export function Dashboard() {
 
       {showModelAdmin ? (
         <section className="adminPanel" data-testid="model-admin-panel">
+          <div>
+            <p className="panelLabel">Runtime diagnostics</p>
+            <div className="summaryGrid" data-testid="runtime-status-panel">
+              <article className="summaryCard">
+                <p className="panelLabel">Profile</p>
+                <strong data-testid="runtime-profile">
+                  {runtimeStatus?.profile ?? "loading"}
+                </strong>
+                <span className="microcopy">{runtimeStatus?.runtimeBuildId ?? "pending build id"}</span>
+              </article>
+              <article className="summaryCard">
+                <p className="panelLabel">Backend target</p>
+                <strong data-testid="runtime-api-origin">
+                  {runtimeStatus?.apiOrigin ?? "loading"}
+                </strong>
+                <span
+                  className={`pill pill-${runtimeStatus?.backendHealthy ? "resolved" : "blocked_by_council"}`}
+                  data-testid="runtime-backend-health"
+                >
+                  {runtimeStatus?.backendHealthy ? "healthy" : "unhealthy"}
+                </span>
+              </article>
+              <article className="summaryCard full">
+                <p className="panelLabel">Runtime warning</p>
+                <p data-testid="runtime-warning">
+                  {runtimeStatus?.configurationWarning ?? "No runtime configuration warning."}
+                </p>
+                <span className="microcopy" data-testid="runtime-latest-proxy-error">
+                  {runtimeStatus?.latestProxyError
+                    ? `${runtimeStatus.latestProxyError.method} ${runtimeStatus.latestProxyError.targetUrl}: ${
+                        runtimeStatus.latestProxyError.error ??
+                        `status ${runtimeStatus.latestProxyError.status ?? "unknown"}`
+                      }`
+                    : "No recent proxy error."}
+                </span>
+              </article>
+            </div>
+          </div>
           <div>
             <p className="panelLabel">Current approved trio</p>
             {currentModels ? (

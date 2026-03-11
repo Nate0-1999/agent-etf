@@ -11,6 +11,14 @@
       "pendingModelProposalCount": 0,
       "error": null,
       "isBusy": false,
+      "runtime": {
+        "profile": "verification",
+        "apiOrigin": "http://127.0.0.1:8100",
+        "runtimeBuildId": "configured",
+        "backendHealthy": true,
+        "configurationWarning": null,
+        "latestProxyError": null
+      },
       "session": null
     },
     "create-idea-tab": {
@@ -25,6 +33,14 @@
       "pendingModelProposalCount": 0,
       "error": null,
       "isBusy": false,
+      "runtime": {
+        "profile": "verification",
+        "apiOrigin": "http://127.0.0.1:8100",
+        "runtimeBuildId": "configured",
+        "backendHealthy": true,
+        "configurationWarning": null,
+        "latestProxyError": null
+      },
       "session": {
         "title": "New Idea",
         "status": "drafting",
@@ -55,6 +71,14 @@
       "pendingModelProposalCount": 0,
       "error": null,
       "isBusy": false,
+      "runtime": {
+        "profile": "verification",
+        "apiOrigin": "http://127.0.0.1:8100",
+        "runtimeBuildId": "configured",
+        "backendHealthy": true,
+        "configurationWarning": null,
+        "latestProxyError": null
+      },
       "session": {
         "title": "Build a quality-focused industrial innovation index using liquid ETFs an",
         "status": "ready_to_convert",
@@ -85,6 +109,14 @@
       "pendingModelProposalCount": 0,
       "error": null,
       "isBusy": false,
+      "runtime": {
+        "profile": "verification",
+        "apiOrigin": "http://127.0.0.1:8100",
+        "runtimeBuildId": "configured",
+        "backendHealthy": true,
+        "configurationWarning": null,
+        "latestProxyError": null
+      },
       "session": {
         "title": "Build a quality-focused industrial innovation index using liquid ETFs an",
         "status": "ready_to_convert",
@@ -115,6 +147,14 @@
       "pendingModelProposalCount": 0,
       "error": null,
       "isBusy": false,
+      "runtime": {
+        "profile": "verification",
+        "apiOrigin": "http://127.0.0.1:8100",
+        "runtimeBuildId": "configured",
+        "backendHealthy": true,
+        "configurationWarning": null,
+        "latestProxyError": null
+      },
       "session": null
     },
     "reopen-ideation": {
@@ -130,6 +170,14 @@
       "pendingModelProposalCount": 0,
       "error": null,
       "isBusy": false,
+      "runtime": {
+        "profile": "verification",
+        "apiOrigin": "http://127.0.0.1:8100",
+        "runtimeBuildId": "configured",
+        "backendHealthy": true,
+        "configurationWarning": null,
+        "latestProxyError": null
+      },
       "session": {
         "title": "Build a quality-focused industrial innovation index using liquid ETFs an",
         "status": "ready_to_convert",
@@ -161,6 +209,14 @@
       "pendingModelProposalCount": 0,
       "error": null,
       "isBusy": false,
+      "runtime": {
+        "profile": "verification",
+        "apiOrigin": "http://127.0.0.1:8100",
+        "runtimeBuildId": "configured",
+        "backendHealthy": true,
+        "configurationWarning": null,
+        "latestProxyError": null
+      },
       "session": {
         "title": "Build a quality-focused industrial innovation index using liquid ETFs an",
         "status": "ready_to_convert",
@@ -187,8 +243,16 @@
       "selectedIndexName": null,
       "showModelAdmin": true,
       "pendingModelProposalCount": 0,
-      "error": "{\"detail\":\"'Index not found'\"}",
+      "error": null,
       "isBusy": false,
+      "runtime": {
+        "profile": "verification",
+        "apiOrigin": "http://127.0.0.1:8100",
+        "runtimeBuildId": "configured",
+        "backendHealthy": true,
+        "configurationWarning": null,
+        "latestProxyError": null
+      },
       "session": null
     },
     "approval-chain": {
@@ -203,6 +267,14 @@
       "pendingModelProposalCount": 0,
       "error": null,
       "isBusy": false,
+      "runtime": {
+        "profile": "verification",
+        "apiOrigin": "http://127.0.0.1:8100",
+        "runtimeBuildId": "configured",
+        "backendHealthy": true,
+        "configurationWarning": null,
+        "latestProxyError": null
+      },
       "session": null
     }
   }

@@ -64,12 +64,7 @@ jobs:
         working-directory: apps/web
         env:
           PYTHON_BIN: python
-          AGENTIC_ENV: development
-          AGENTIC_TEST_MODE: '1'
-          DATABASE_URL: ''
-          OPENROUTER_API_KEY: ''
-          EXA_API_KEY: ''
-          NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8100
+          AGENTIC_DIRECT_API_BASE: http://127.0.0.1:8100
         run: npm run test:e2e
       - name: Upload Playwright artifacts
         if: always()

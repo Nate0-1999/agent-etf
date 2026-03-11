@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { expect, type Page, type TestInfo } from "@playwright/test";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8100";
+const API_BASE = process.env.AGENTIC_DIRECT_API_BASE ?? "http://127.0.0.1:8100";
 const RESULTS_ROOT = path.resolve(process.cwd(), "test-results", "verification");
 const UPDATE_BASELINES = process.env.UPDATE_VERIFICATION_BASELINES === "1";
 
@@ -27,6 +27,14 @@ type VerificationState = {
   pendingModelProposalCount: number;
   error: string | null;
   isBusy: boolean;
+  runtime: {
+    profile: string;
+    apiOrigin: string;
+    runtimeBuildId: string;
+    backendHealthy: boolean;
+    configurationWarning: string | null;
+    latestProxyError: string | null;
+  } | null;
   session: {
     title: string | null;
     status: string | null;
@@ -135,6 +143,7 @@ function diffStates(previous: VerificationState, next: VerificationState): strin
     "pendingModelProposalCount",
     "error",
     "isBusy",
+    "runtime",
     "session",
   ];
   for (const key of keys) {
@@ -150,8 +159,7 @@ function condensedText(raw: string): string {
 }
 
 async function waitForUiSettle(page: Page): Promise<void> {
-  await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(150);
+  await page.waitForTimeout(250);
   await page.waitForFunction(() => {
     const last = window.__AGENTIC_INDEXING_LAST_RENDER_AT__ ?? 0;
     return Date.now() - last > 150;
@@ -213,11 +221,15 @@ export class ScenarioRecorder {
       if (!url.startsWith(API_BASE) && !url.startsWith(this.testInfo.project.use?.baseURL ?? "")) {
         return;
       }
+      const headers = await response.allHeaders();
       this.networkEvents.push({
         url,
         status: response.status(),
         method: response.request().method(),
-        requestId: response.headers()["x-request-id"] ?? null,
+        requestId: headers["x-request-id"] ?? null,
+        proxyRequestId: headers["x-proxy-request-id"] ?? null,
+        backendRequestId: headers["x-backend-request-id"] ?? null,
+        profile: headers["x-agentic-profile"] ?? null,
       });
     });
   }
@@ -295,6 +307,22 @@ export class ScenarioRecorder {
     }
   }
 
+  async assertProxyOnlyRequests(): Promise<void> {
+    const baseUrl = String(this.testInfo.project.use?.baseURL ?? "");
+    const directBackendCalls = this.networkEvents.filter((event) => {
+      if (typeof event.url !== "string") {
+        return false;
+      }
+      if (!String(event.url).includes("/api/")) {
+        return false;
+      }
+      return !String(event.url).startsWith(baseUrl);
+    });
+    if (directBackendCalls.length > 0) {
+      throw new Error(`Browser made direct backend calls: ${JSON.stringify(directBackendCalls)}`);
+    }
+  }
+
   async expectMobileLayout(): Promise<void> {
     if (!isMobileProject(this.testInfo.project.name)) {
       return;
@@ -325,10 +353,27 @@ export class ScenarioRecorder {
   }
 
   async finalize(status: "passed" | "failed"): Promise<void> {
+    const directBackendLeak = this.networkEvents.find(
+      (event) =>
+        typeof event.url === "string" &&
+        String(event.url).includes("/api/") &&
+        !String(event.url).startsWith(String(this.testInfo.project.use?.baseURL ?? "")),
+    );
+    const failureClassification =
+      status === "passed"
+        ? "none"
+        : directBackendLeak
+          ? "wrong_origin"
+          : this.steps.some((step) => step.consoleEvents.length > 0)
+            ? "frontend_runtime_error"
+            : this.steps.some((step) => step.networkEvents.some((event) => Number(event.status ?? 0) >= 500))
+              ? "proxy_or_backend_failure"
+              : "unknown";
     const lines = [
       `# Verification Summary: ${this.spec.id}`,
       "",
       `- Status: ${status}`,
+      `- Failure classification: ${failureClassification}`,
       `- Project: ${this.testInfo.project.name}`,
       `- Test run: ${this.testRunId}`,
       `- Steps captured: ${this.steps.length}`,
@@ -342,7 +387,7 @@ export class ScenarioRecorder {
     await fs.writeFile(path.join(this.scenarioDir, "summary.md"), `${lines.join("\n")}\n`);
     await fs.writeFile(
       path.join(this.scenarioDir, "summary.json"),
-      JSON.stringify({ scenario: this.spec.id, project: this.testInfo.project.name, status, testRunId: this.testRunId, steps: this.steps }, null, 2),
+      JSON.stringify({ scenario: this.spec.id, project: this.testInfo.project.name, status, failureClassification, testRunId: this.testRunId, steps: this.steps }, null, 2),
     );
   }
 }

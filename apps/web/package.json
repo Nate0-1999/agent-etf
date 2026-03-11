@@ -13,7 +13,8 @@
     "test:e2e:all": "playwright test",
     "test:e2e:headed": "playwright test --grep @core --headed",
     "test:e2e:update": "UPDATE_VERIFICATION_BASELINES=1 playwright test --grep @core",
-    "test:e2e:report": "node tests/e2e/report-latest.mjs"
+    "test:e2e:report": "node tests/e2e/report-latest.mjs",
+    "test:e2e:replay": "node tests/e2e/replay-latest.mjs"
   },
   "dependencies": {
     "next": "14.2.5",

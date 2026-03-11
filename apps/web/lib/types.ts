@@ -234,3 +234,26 @@ export type DevResetResponse = {
   cleared: boolean;
   message: string;
 };
+
+export type RuntimeStatus = {
+  service: "agentic-indexing-web";
+  profile: string;
+  apiOrigin: string;
+  runtimeBuildId: string;
+  backendHealthy: boolean;
+  backendStatusCode: number | null;
+  backendRequestId: string | null;
+  configurationWarning: string | null;
+  latestProxyError: {
+    timestamp: string;
+    profile: string;
+    proxyRequestId: string;
+    targetUrl: string;
+    method: string;
+    status: number | null;
+    backendRequestId: string | null;
+    testRunId: string | null;
+    error: string | null;
+  } | null;
+  recentProxyEventCount: number;
+};

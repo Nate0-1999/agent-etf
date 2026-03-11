@@ -4,6 +4,10 @@ export type VerificationApiEvent = {
   method: string;
   status: number;
   requestId: string | null;
+  proxyRequestId?: string | null;
+  backendRequestId?: string | null;
+  requestUrl?: string | null;
+  requestBody?: string | null;
   testRunId: string | null;
 };
 
@@ -17,6 +21,14 @@ export type VerificationState = {
   pendingModelProposalCount: number;
   error: string | null;
   isBusy: boolean;
+  runtime: {
+    profile: string;
+    apiOrigin: string;
+    runtimeBuildId: string;
+    backendHealthy: boolean;
+    configurationWarning: string | null;
+    latestProxyError: string | null;
+  } | null;
   session: {
     title: string | null;
     status: string | null;

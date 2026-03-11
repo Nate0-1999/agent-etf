@@ -7,11 +7,13 @@ const apiPort = process.env.PLAYWRIGHT_API_PORT ?? "8100";
 const webPort = process.env.PLAYWRIGHT_WEB_PORT ?? "3100";
 const apiBase = `http://127.0.0.1:${apiPort}`;
 const webBase = `http://127.0.0.1:${webPort}`;
+const stackCommand = `${pythonBin} scripts/run_agentic_stack.py verification --api-port ${apiPort} --web-port ${webPort} --host 127.0.0.1`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: false,
   workers: 1,
+  timeout: 90000,
   reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   use: {
     baseURL: webBase,
@@ -21,28 +23,15 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `${pythonBin} -m uvicorn apps.api.agent_etf_api.main:app --host 127.0.0.1 --port ${apiPort}`,
-      url: `${apiBase}/healthz`,
+      command: stackCommand,
       cwd: rootDir,
-      reuseExistingServer: false,
-      env: {
-        ...process.env,
-        AGENTIC_ENV: "development",
-        AGENTIC_TEST_MODE: "1",
-        APPROVAL_STEP3_COOLDOWN_SECONDS: "0",
-        DATABASE_URL: "",
-        OPENROUTER_API_KEY: "",
-        EXA_API_KEY: "",
-      },
-    },
-    {
-      command: `npm run dev -- --hostname 127.0.0.1 --port ${webPort}`,
       url: webBase,
-      cwd: __dirname,
       reuseExistingServer: false,
       env: {
         ...process.env,
-        NEXT_PUBLIC_API_BASE_URL: apiBase,
+        PYTHON_BIN: pythonBin,
+        PLAYWRIGHT_API_PORT: apiPort,
+        PLAYWRIGHT_WEB_PORT: webPort,
       },
     },
   ],

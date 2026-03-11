@@ -25,8 +25,7 @@ make install-web
 make db-proxy
 make migrate
 make test
-make run-api
-make run-web
+make run-stack-manual
 make verify-ui
 ```
 
@@ -36,6 +35,7 @@ Local URLs:
 
 - API: `http://127.0.0.1:8000`
 - Web: `http://localhost:3000`
+- The browser talks to the Next.js app on one origin. Next proxies app requests to FastAPI server-side.
 - The web app opens to the Agentic Indexing workbook, with `Saved Indexes` plus chat-driven ideation tabs backed by Postgres.
 
 Docker dev stack:
@@ -77,7 +77,10 @@ This is not optional documentation. The full operational and security procedure 
 
 ## Browser Verification
 
-- Browser verification uses Playwright against an isolated local test stack with in-memory state.
+- Browser verification uses Playwright against the same browser request topology as manual localhost:
+  - browser -> Next.js
+  - Next.js proxy -> FastAPI
+- Verification runs on an isolated local test profile with in-memory state.
 - Supported projects in the current core suite:
   - Chromium desktop
   - Firefox desktop
@@ -89,6 +92,7 @@ This is not optional documentation. The full operational and security procedure 
 ```bash
 make install-playwright
 make verify-ui
+make replay-ui-latest
 make verify-ui-headed
 make verify-ui-update-baselines
 make verify-ui-report

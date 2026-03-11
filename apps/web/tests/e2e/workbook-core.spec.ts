@@ -30,6 +30,7 @@ test.describe("@core workbook verification", () => {
       await recorder.captureStep("initial-load", "Load workbook shell", ["saved indexes tab visible"], {
         screenshot: true,
       });
+      await recorder.assertProxyOnlyRequests();
       await recorder.expectMobileLayout();
 
       await page.getByTestId("new-idea-button").click();
@@ -79,6 +80,8 @@ test.describe("@core workbook verification", () => {
 
       await page.getByTestId("model-badge-button").click();
       await expect(page.getByTestId("model-admin-panel")).toBeVisible();
+      await expect(page.getByTestId("runtime-profile")).toContainText("verification");
+      await expect(page.getByTestId("runtime-warning")).toContainText("No runtime configuration warning.");
       await page.getByTestId("refresh-model-registry-button").click();
       const proposalButton = page.locator('[data-testid^="approve-model-proposal-"]').first();
       await expect(proposalButton).toBeVisible();
@@ -93,6 +96,7 @@ test.describe("@core workbook verification", () => {
       await recorder.captureStep("reset-runtime", "Clear local runtime data", [
         "blank state restored",
       ], { screenshot: true });
+      await recorder.assertProxyOnlyRequests();
 
       status = "passed";
     } finally {
