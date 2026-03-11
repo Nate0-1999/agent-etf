@@ -14,8 +14,11 @@ node_modules/
 .next/
 out/
 dist/
+*.tsbuildinfo
 generated_strategies/
 *.log
 .DS_Store
 coverage/
 .generated/
+apps/web/playwright-report/
+apps/web/test-results/

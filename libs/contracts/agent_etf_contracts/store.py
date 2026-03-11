@@ -8,9 +8,15 @@ from typing import Any, Protocol, cast
 
 from agent_etf_contracts.models import (
     ApprovalBundle,
+    ApprovedModelSet,
     AuditReport,
     BacktestRun,
     IdeaSpec,
+    IdeationMessage,
+    IdeationSession,
+    IndexDetail,
+    ModelCatalogEntry,
+    PendingModelSetProposal,
     SpecGap,
     StrategyArtifact,
     StrategyDefinition,
@@ -35,56 +41,75 @@ except ImportError:  # pragma: no cover - exercised when Postgres deps are absen
 
 
 class StrategyStore(Protocol):
-    def save_idea(self, idea: IdeaSpec) -> None:
-        ...
+    def save_idea(self, idea: IdeaSpec) -> None: ...
 
-    def get_idea(self, idea_id: str) -> IdeaSpec | None:
-        ...
+    def get_idea(self, idea_id: str) -> IdeaSpec | None: ...
 
-    def save_idea_gaps(self, idea_id: str, gaps: list[SpecGap]) -> None:
-        ...
+    def save_idea_gaps(self, idea_id: str, gaps: list[SpecGap]) -> None: ...
 
-    def get_idea_gaps(self, idea_id: str) -> list[SpecGap]:
-        ...
+    def get_idea_gaps(self, idea_id: str) -> list[SpecGap]: ...
 
-    def save_strategy(self, strategy: StrategyDefinition) -> None:
-        ...
+    def save_strategy(self, strategy: StrategyDefinition) -> None: ...
 
-    def get_strategy(self, strategy_id: str) -> StrategyDefinition | None:
-        ...
+    def get_strategy(self, strategy_id: str) -> StrategyDefinition | None: ...
 
-    def save_strategy_artifact(self, artifact: StrategyArtifact) -> None:
-        ...
+    def list_strategies(self) -> list[StrategyDefinition]: ...
 
-    def get_strategy_artifact(self, strategy_id: str) -> StrategyArtifact | None:
-        ...
+    def save_strategy_artifact(self, artifact: StrategyArtifact) -> None: ...
 
-    def save_audit_reports(self, ref_id: str, reports: list[AuditReport]) -> None:
-        ...
+    def get_strategy_artifact(self, strategy_id: str) -> StrategyArtifact | None: ...
 
-    def get_audit_reports(self, ref_id: str) -> list[AuditReport]:
-        ...
+    def save_audit_reports(self, ref_id: str, reports: list[AuditReport]) -> None: ...
 
-    def save_backtest(self, run: BacktestRun) -> None:
-        ...
+    def get_audit_reports(self, ref_id: str) -> list[AuditReport]: ...
 
-    def get_backtest(self, strategy_id: str) -> BacktestRun | None:
-        ...
+    def save_backtest(self, run: BacktestRun) -> None: ...
 
-    def list_backtests(self) -> dict[str, BacktestRun]:
-        ...
+    def get_backtest(self, strategy_id: str) -> BacktestRun | None: ...
 
-    def save_approval_bundle(self, bundle: ApprovalBundle) -> None:
-        ...
+    def list_backtests(self) -> dict[str, BacktestRun]: ...
 
-    def get_approval_bundle(self, bundle_id: str) -> ApprovalBundle | None:
-        ...
+    def save_approval_bundle(self, bundle: ApprovalBundle) -> None: ...
 
-    def save_permission(self, profile: UserPermissionProfile) -> None:
-        ...
+    def get_approval_bundle(self, bundle_id: str) -> ApprovalBundle | None: ...
 
-    def get_permission(self, user_id: str) -> UserPermissionProfile | None:
-        ...
+    def list_approval_bundles(self, strategy_id: str) -> list[ApprovalBundle]: ...
+
+    def save_permission(self, profile: UserPermissionProfile) -> None: ...
+
+    def get_permission(self, user_id: str) -> UserPermissionProfile | None: ...
+
+    def save_ideation_session(self, session: IdeationSession) -> None: ...
+
+    def get_ideation_session(self, session_id: str) -> IdeationSession | None: ...
+
+    def list_ideation_sessions(self, user_id: str | None = None) -> list[IdeationSession]: ...
+
+    def save_ideation_message(self, message: IdeationMessage) -> None: ...
+
+    def list_ideation_messages(self, session_id: str) -> list[IdeationMessage]: ...
+
+    def save_index(self, index: IndexDetail) -> None: ...
+
+    def get_index(self, index_id: str) -> IndexDetail | None: ...
+
+    def list_indexes(self) -> list[IndexDetail]: ...
+
+    def replace_model_catalog(self, catalog: list[ModelCatalogEntry]) -> None: ...
+
+    def list_model_catalog(self) -> list[ModelCatalogEntry]: ...
+
+    def save_current_model_set(self, model_set: ApprovedModelSet) -> None: ...
+
+    def get_current_model_set(self) -> ApprovedModelSet | None: ...
+
+    def save_model_proposal(self, proposal: PendingModelSetProposal) -> None: ...
+
+    def get_model_proposal(self, proposal_id: str) -> PendingModelSetProposal | None: ...
+
+    def list_model_proposals(self) -> list[PendingModelSetProposal]: ...
+
+    def clear_runtime_data(self) -> None: ...
 
 
 @dataclass
@@ -97,6 +122,12 @@ class InMemoryStore(StrategyStore):
     backtests: dict[str, BacktestRun] = field(default_factory=dict)
     approval_bundles: dict[str, ApprovalBundle] = field(default_factory=dict)
     permissions: dict[str, UserPermissionProfile] = field(default_factory=dict)
+    ideation_sessions: dict[str, IdeationSession] = field(default_factory=dict)
+    ideation_messages: dict[str, list[IdeationMessage]] = field(default_factory=dict)
+    indexes: dict[str, IndexDetail] = field(default_factory=dict)
+    model_catalog: dict[str, ModelCatalogEntry] = field(default_factory=dict)
+    current_model_set: ApprovedModelSet | None = None
+    model_proposals: dict[str, PendingModelSetProposal] = field(default_factory=dict)
 
     def save_idea(self, idea: IdeaSpec) -> None:
         self.ideas[idea.id] = idea
@@ -115,6 +146,13 @@ class InMemoryStore(StrategyStore):
 
     def get_strategy(self, strategy_id: str) -> StrategyDefinition | None:
         return self.strategies.get(strategy_id)
+
+    def list_strategies(self) -> list[StrategyDefinition]:
+        return sorted(
+            self.strategies.values(),
+            key=lambda strategy: strategy.created_at,
+            reverse=True,
+        )
 
     def save_strategy_artifact(self, artifact: StrategyArtifact) -> None:
         self.strategy_artifacts[artifact.strategy_id] = artifact
@@ -143,11 +181,83 @@ class InMemoryStore(StrategyStore):
     def get_approval_bundle(self, bundle_id: str) -> ApprovalBundle | None:
         return self.approval_bundles.get(bundle_id)
 
+    def list_approval_bundles(self, strategy_id: str) -> list[ApprovalBundle]:
+        bundles = [
+            bundle for bundle in self.approval_bundles.values() if bundle.strategy_id == strategy_id
+        ]
+        return sorted(bundles, key=lambda bundle: bundle.created_at, reverse=True)
+
     def save_permission(self, profile: UserPermissionProfile) -> None:
         self.permissions[profile.user_id] = profile
 
     def get_permission(self, user_id: str) -> UserPermissionProfile | None:
         return self.permissions.get(user_id)
+
+    def save_ideation_session(self, session: IdeationSession) -> None:
+        self.ideation_sessions[session.id] = session
+
+    def get_ideation_session(self, session_id: str) -> IdeationSession | None:
+        return self.ideation_sessions.get(session_id)
+
+    def list_ideation_sessions(self, user_id: str | None = None) -> list[IdeationSession]:
+        sessions = list(self.ideation_sessions.values())
+        if user_id is not None:
+            sessions = [session for session in sessions if session.user_id == user_id]
+        return sorted(sessions, key=lambda session: session.updated_at, reverse=True)
+
+    def save_ideation_message(self, message: IdeationMessage) -> None:
+        self.ideation_messages.setdefault(message.session_id, []).append(message)
+
+    def list_ideation_messages(self, session_id: str) -> list[IdeationMessage]:
+        return sorted(
+            self.ideation_messages.get(session_id, []),
+            key=lambda message: message.created_at,
+        )
+
+    def save_index(self, index: IndexDetail) -> None:
+        self.indexes[index.id] = index
+
+    def get_index(self, index_id: str) -> IndexDetail | None:
+        return self.indexes.get(index_id)
+
+    def list_indexes(self) -> list[IndexDetail]:
+        return sorted(self.indexes.values(), key=lambda index: index.updated_at, reverse=True)
+
+    def replace_model_catalog(self, catalog: list[ModelCatalogEntry]) -> None:
+        self.model_catalog = {entry.id: entry for entry in catalog}
+
+    def list_model_catalog(self) -> list[ModelCatalogEntry]:
+        return sorted(self.model_catalog.values(), key=lambda entry: entry.id)
+
+    def save_current_model_set(self, model_set: ApprovedModelSet) -> None:
+        self.current_model_set = model_set
+
+    def get_current_model_set(self) -> ApprovedModelSet | None:
+        return self.current_model_set
+
+    def save_model_proposal(self, proposal: PendingModelSetProposal) -> None:
+        self.model_proposals[proposal.id] = proposal
+
+    def get_model_proposal(self, proposal_id: str) -> PendingModelSetProposal | None:
+        return self.model_proposals.get(proposal_id)
+
+    def list_model_proposals(self) -> list[PendingModelSetProposal]:
+        return sorted(self.model_proposals.values(), key=lambda item: item.created_at, reverse=True)
+
+    def clear_runtime_data(self) -> None:
+        self.ideas.clear()
+        self.idea_gaps.clear()
+        self.strategies.clear()
+        self.strategy_artifacts.clear()
+        self.audits.clear()
+        self.backtests.clear()
+        self.approval_bundles.clear()
+        self.ideation_sessions.clear()
+        self.ideation_messages.clear()
+        self.indexes.clear()
+        self.model_catalog.clear()
+        self.current_model_set = None
+        self.model_proposals.clear()
 
 
 class PostgresStore(StrategyStore):
@@ -188,16 +298,9 @@ class PostgresStore(StrategyStore):
         with self._connection() as connection:
             connection.execute(statement, (key_value, Jsonb(self._coerce_payload(payload))))
 
-    def _fetch_payload(
-        self,
-        table: str,
-        key_column: str,
-        key_value: str,
-    ) -> object | None:
+    def _fetch_payload(self, table: str, key_column: str, key_value: str) -> object | None:
         assert sql is not None
-        statement = sql.SQL(
-            "SELECT payload FROM {table} WHERE {key_column} = %s"
-        ).format(
+        statement = sql.SQL("SELECT payload FROM {table} WHERE {key_column} = %s").format(
             table=sql.Identifier(table),
             key_column=sql.Identifier(key_column),
         )
@@ -217,8 +320,12 @@ class PostgresStore(StrategyStore):
         return IdeaSpec.model_validate(payload)
 
     def save_idea_gaps(self, idea_id: str, gaps: list[SpecGap]) -> None:
-        payload = [gap.model_dump(mode="json") for gap in gaps]
-        self._upsert_payload("idea_gaps", "idea_id", idea_id, payload)
+        self._upsert_payload(
+            "idea_gaps",
+            "idea_id",
+            idea_id,
+            [gap.model_dump(mode="json") for gap in gaps],
+        )
 
     def get_idea_gaps(self, idea_id: str) -> list[SpecGap]:
         payload = self._fetch_payload("idea_gaps", "idea_id", idea_id)
@@ -234,6 +341,13 @@ class PostgresStore(StrategyStore):
         if payload is None:
             return None
         return StrategyDefinition.model_validate(payload)
+
+    def list_strategies(self) -> list[StrategyDefinition]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT payload FROM strategies ORDER BY updated_at DESC"
+            ).fetchall()
+        return [StrategyDefinition.model_validate(row["payload"]) for row in rows]
 
     def save_strategy_artifact(self, artifact: StrategyArtifact) -> None:
         self._upsert_payload(
@@ -294,24 +408,29 @@ class PostgresStore(StrategyStore):
             rows = connection.execute(
                 "SELECT strategy_id, payload FROM backtest_runs ORDER BY strategy_id ASC"
             ).fetchall()
-        return {
-            str(row["strategy_id"]): BacktestRun.model_validate(row["payload"])
-            for row in rows
-        }
+        return {str(row["strategy_id"]): BacktestRun.model_validate(row["payload"]) for row in rows}
 
     def save_approval_bundle(self, bundle: ApprovalBundle) -> None:
-        self._upsert_payload(
-            "approval_bundles",
-            "id",
-            bundle.id,
-            bundle.model_dump(mode="json"),
-        )
+        self._upsert_payload("approval_bundles", "id", bundle.id, bundle.model_dump(mode="json"))
 
     def get_approval_bundle(self, bundle_id: str) -> ApprovalBundle | None:
         payload = self._fetch_payload("approval_bundles", "id", bundle_id)
         if payload is None:
             return None
         return ApprovalBundle.model_validate(payload)
+
+    def list_approval_bundles(self, strategy_id: str) -> list[ApprovalBundle]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT payload
+                FROM approval_bundles
+                WHERE (payload ->> 'strategy_id') = %s
+                ORDER BY updated_at DESC
+                """,
+                (strategy_id,),
+            ).fetchall()
+        return [ApprovalBundle.model_validate(row["payload"]) for row in rows]
 
     def save_permission(self, profile: UserPermissionProfile) -> None:
         self._upsert_payload(
@@ -326,6 +445,140 @@ class PostgresStore(StrategyStore):
         if payload is None:
             return None
         return UserPermissionProfile.model_validate(payload)
+
+    def save_ideation_session(self, session: IdeationSession) -> None:
+        self._upsert_payload(
+            "ideation_sessions",
+            "id",
+            session.id,
+            session.model_dump(mode="json"),
+        )
+
+    def get_ideation_session(self, session_id: str) -> IdeationSession | None:
+        payload = self._fetch_payload("ideation_sessions", "id", session_id)
+        if payload is None:
+            return None
+        return IdeationSession.model_validate(payload)
+
+    def list_ideation_sessions(self, user_id: str | None = None) -> list[IdeationSession]:
+        query = "SELECT payload FROM ideation_sessions"
+        params: tuple[object, ...] = ()
+        if user_id is not None:
+            query += " WHERE (payload ->> 'user_id') = %s"
+            params = (user_id,)
+        query += " ORDER BY updated_at DESC"
+        with self._connection() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [IdeationSession.model_validate(row["payload"]) for row in rows]
+
+    def save_ideation_message(self, message: IdeationMessage) -> None:
+        self._upsert_payload(
+            "ideation_messages",
+            "id",
+            message.id,
+            message.model_dump(mode="json"),
+        )
+
+    def list_ideation_messages(self, session_id: str) -> list[IdeationMessage]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT payload
+                FROM ideation_messages
+                WHERE (payload ->> 'session_id') = %s
+                ORDER BY updated_at ASC
+                """,
+                (session_id,),
+            ).fetchall()
+        return [IdeationMessage.model_validate(row["payload"]) for row in rows]
+
+    def save_index(self, index: IndexDetail) -> None:
+        self._upsert_payload("indexes", "id", index.id, index.model_dump(mode="json"))
+
+    def get_index(self, index_id: str) -> IndexDetail | None:
+        payload = self._fetch_payload("indexes", "id", index_id)
+        if payload is None:
+            return None
+        return IndexDetail.model_validate(payload)
+
+    def list_indexes(self) -> list[IndexDetail]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT payload FROM indexes ORDER BY updated_at DESC"
+            ).fetchall()
+        return [IndexDetail.model_validate(row["payload"]) for row in rows]
+
+    def replace_model_catalog(self, catalog: list[ModelCatalogEntry]) -> None:
+        assert Jsonb is not None
+        with self._connection() as connection:
+            connection.execute("DELETE FROM model_catalog")
+            for entry in catalog:
+                connection.execute(
+                    """
+                    INSERT INTO model_catalog (id, payload, updated_at)
+                    VALUES (%s, %s, NOW())
+                    """,
+                    (entry.id, Jsonb(entry.model_dump(mode="json"))),
+                )
+
+    def list_model_catalog(self) -> list[ModelCatalogEntry]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT payload FROM model_catalog ORDER BY id ASC"
+            ).fetchall()
+        return [ModelCatalogEntry.model_validate(row["payload"]) for row in rows]
+
+    def save_current_model_set(self, model_set: ApprovedModelSet) -> None:
+        self._upsert_payload(
+            "active_model_sets", "slot", "active", model_set.model_dump(mode="json")
+        )
+
+    def get_current_model_set(self) -> ApprovedModelSet | None:
+        payload = self._fetch_payload("active_model_sets", "slot", "active")
+        if payload is None:
+            return None
+        return ApprovedModelSet.model_validate(payload)
+
+    def save_model_proposal(self, proposal: PendingModelSetProposal) -> None:
+        self._upsert_payload(
+            "model_set_proposals",
+            "id",
+            proposal.id,
+            proposal.model_dump(mode="json"),
+        )
+
+    def get_model_proposal(self, proposal_id: str) -> PendingModelSetProposal | None:
+        payload = self._fetch_payload("model_set_proposals", "id", proposal_id)
+        if payload is None:
+            return None
+        return PendingModelSetProposal.model_validate(payload)
+
+    def list_model_proposals(self) -> list[PendingModelSetProposal]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT payload FROM model_set_proposals ORDER BY updated_at DESC"
+            ).fetchall()
+        return [PendingModelSetProposal.model_validate(row["payload"]) for row in rows]
+
+    def clear_runtime_data(self) -> None:
+        tables = [
+            "audit_reports",
+            "approval_bundles",
+            "backtest_runs",
+            "strategy_artifacts",
+            "strategies",
+            "idea_gaps",
+            "ideas",
+            "ideation_messages",
+            "ideation_sessions",
+            "indexes",
+            "active_model_sets",
+            "model_catalog",
+            "model_set_proposals",
+        ]
+        with self._connection() as connection:
+            for table in tables:
+                connection.execute(f"DELETE FROM {table}")
 
 
 def build_store() -> StrategyStore:

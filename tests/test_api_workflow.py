@@ -9,7 +9,9 @@ from fastapi.testclient import TestClient
 from bootstrap_paths import add_project_paths
 
 add_project_paths()
+os.environ["DATABASE_URL"] = ""
 
+from agent_etf_contracts.models import ModelCatalogEntry, ModelProviderFamily
 from agent_etf_contracts.store import InMemoryStore, build_store
 
 from apps.api.agent_etf_api.main import app
@@ -19,157 +21,210 @@ from apps.api.agent_etf_api.service import ControlPlaneService
 def new_client() -> tuple[TestClient, ControlPlaneService]:
     import apps.api.agent_etf_api.main as main_module
 
-    main_module.service = ControlPlaneService()
+    main_module.service = ControlPlaneService(store=InMemoryStore())
     return TestClient(app), main_module.service
 
 
-def seed_strategy(client: TestClient) -> str:
+def create_session(client: TestClient) -> str:
+    response = client.post("/ideation/sessions", json={"user_id": "operator", "title": "New Idea"})
+    assert response.status_code == 200
+    return str(response.json()["session"]["id"])
+
+
+def test_ideation_session_starts_blank_and_persists_messages() -> None:
+    client, _ = new_client()
+    session_id = create_session(client)
+
+    detail = client.get(f"/ideation/sessions/{session_id}")
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["session"]["title"] == "New Idea"
+    assert body["messages"][0]["role"] == "assistant"
+
+    updated = client.post(
+        f"/ideation/sessions/{session_id}/messages",
+        json={
+            "content": (
+                "Build an equal weight industrial metals index using ETFs "
+                "and miners with monthly reviews."
+            )
+        },
+    )
+    assert updated.status_code == 200
+    updated_body = updated.json()
+    assert len(updated_body["messages"]) >= 3
+    assert updated_body["session"]["raw_thesis"]
+    assert any(
+        tile["key"] == "candidate_vehicles" for tile in updated_body["session"]["decision_tiles"]
+    )
+
+
+def test_convert_session_to_index_and_list_saved_indexes() -> None:
+    client, _ = new_client()
+    session_id = create_session(client)
+
+    post = client.post(
+        f"/ideation/sessions/{session_id}/messages",
+        json={
+            "content": (
+                "Create a diversified precious metals indexing strategy "
+                "with equal weight ETFs and futures and monthly review."
+            )
+        },
+    )
+    assert post.status_code == 200
+
+    convert = client.post(f"/ideation/sessions/{session_id}/convert-to-index")
+    assert convert.status_code == 200
+    converted = convert.json()
+    index_id = converted["index"]["id"]
+    assert converted["session"]["status"] == "converted"
+    assert converted["index"]["holdings"]
+    assert converted["index"]["performance"]
+
+    listing = client.get("/indexes")
+    assert listing.status_code == 200
+    assert any(item["id"] == index_id for item in listing.json()["indexes"])
+
+    detail = client.get(f"/indexes/{index_id}")
+    assert detail.status_code == 200
+    detail_body = detail.json()
+    timeframes = {row["timeframe"] for row in detail_body["performance"]}
+    assert {"1M", "1Y", "Since Inception"}.issubset(timeframes)
+
+
+def test_saved_index_can_open_new_ideation_session() -> None:
+    client, _ = new_client()
+    session_id = create_session(client)
+    client.post(
+        f"/ideation/sessions/{session_id}/messages",
+        json={
+            "content": (
+                "Build an infrastructure materials index with equal weights and quarterly review."
+            )
+        },
+    )
+    converted = client.post(f"/ideation/sessions/{session_id}/convert-to-index")
+    index_id = converted.json()["index"]["id"]
+
+    reopened = client.post(f"/indexes/{index_id}/open-ideation")
+    assert reopened.status_code == 200
+    body = reopened.json()
+    assert body["session"]["id"] != session_id
+    assert body["session"]["raw_thesis"]
+    assert any(message["role"] == "assistant" for message in body["messages"])
+
+
+def test_model_refresh_creates_proposal_and_approval_switches_active_set() -> None:
+    client, service = new_client()
+
+    def newer_catalog() -> list[ModelCatalogEntry]:
+        return [
+            ModelCatalogEntry(
+                id="openai-gpt-5.5",
+                provider=ModelProviderFamily.openai,
+                family="GPT-5",
+                label="GPT-5.5",
+                openrouter_slug="gpt-5.5",
+                official_doc_url="https://developers.openai.com/api/docs/models",
+            ),
+            ModelCatalogEntry(
+                id="anthropic-claude-4.7",
+                provider=ModelProviderFamily.anthropic,
+                family="Claude 4",
+                label="Claude 4.7",
+                openrouter_slug="claude-4.7",
+                official_doc_url="https://platform.claude.com/docs/en/about-claude/models/overview",
+            ),
+            ModelCatalogEntry(
+                id="google-gemini-3.2-pro",
+                provider=ModelProviderFamily.google,
+                family="Gemini 3",
+                label="Gemini 3.2 Pro",
+                openrouter_slug="gemini-3.2-pro",
+                official_doc_url="https://ai.google.dev/gemini-api/docs/models",
+            ),
+        ]
+
+    service.model_registry.fetch_catalog = newer_catalog  # type: ignore[method-assign]
+
+    refresh = client.post("/models/refresh")
+    assert refresh.status_code == 200
+    body = refresh.json()
+    assert body["proposal"] is not None
+    proposal_id = body["proposal"]["id"]
+
+    approved = client.post(f"/models/proposals/{proposal_id}/approve")
+    assert approved.status_code == 200
+    current = approved.json()["model_set"]
+    assert current["openai_model"]["label"] == "GPT-5.5"
+    assert current["anthropic_model"]["label"] == "Claude 4.7"
+    assert current["google_model"]["label"] == "Gemini 3.2 Pro"
+
+
+def test_dev_reset_clears_sessions_and_indexes() -> None:
+    client, _ = new_client()
+    session_id = create_session(client)
+    client.post(
+        f"/ideation/sessions/{session_id}/messages",
+        json={"content": "Build a mining royalty index with monthly review."},
+    )
+    client.post(f"/ideation/sessions/{session_id}/convert-to-index")
+
+    reset = client.post("/dev/reset")
+    assert reset.status_code == 200
+    assert reset.json()["cleared"] is True
+
+    sessions = client.get("/ideation/sessions")
+    assert sessions.status_code == 200
+    assert sessions.json()["sessions"] == []
+
+    indexes = client.get("/indexes")
+    assert indexes.status_code == 200
+    assert indexes.json()["indexes"] == []
+
+
+def test_dev_seed_saved_index_creates_fixture_and_events() -> None:
+    client, _ = new_client()
+
+    seeded = client.post("/dev/seed", json={"scenario": "saved_index"})
+    assert seeded.status_code == 200
+    payload = seeded.json()
+    assert payload["created_session_id"] is not None
+    assert payload["created_index_id"] is not None
+
+    indexes = client.get("/indexes")
+    assert indexes.status_code == 200
+    assert len(indexes.json()["indexes"]) == 1
+
+    events = client.get("/dev/events")
+    assert events.status_code == 200
+    assert any(event["action"] == "dev_seed" for event in events.json()["events"])
+
+
+def test_request_id_header_is_returned() -> None:
+    client, _ = new_client()
+
+    response = client.get("/healthz", headers={"X-Test-Run-Id": "test-run-123"})
+    assert response.status_code == 200
+    assert response.headers["X-Request-Id"].startswith("req-")
+    assert response.headers["X-Test-Run-Id"] == "test-run-123"
+
+
+def test_strategy_summary_no_longer_exposes_artifact() -> None:
+    client, _ = new_client()
     create = client.post(
         "/ideas",
         json={
             "user_id": "operator",
-            "raw_idea": "Create an equal weight thematic metals etf strategy with monthly cadence",
+            "raw_idea": "Build a diversified metals index with ETFs, miners, and monthly cadence",
         },
     )
-    assert create.status_code == 200
-    idea_id = create.json()["idea"]["id"]
-
-    response = client.post(f"/strategies/from-idea/{idea_id}")
-    assert response.status_code == 200
-    strategy_id = response.json()["strategy"]["id"]
-    return str(strategy_id)
-
-
-def test_idea_clarification_and_strategy_creation() -> None:
-    client, _ = new_client()
-
-    create = client.post("/ideas", json={"user_id": "operator", "raw_idea": "metals"})
-    assert create.status_code == 200
-    idea_id = create.json()["idea"]["id"]
-    assert create.json()["ready_for_strategy"] is False
-
-    clarify = client.post(
-        f"/ideas/{idea_id}/clarify",
-        json={
-            "answers": {
-                "objective": "Build a diversified heavy metals idea portfolio",
-                "allowed_assets": ["etf", "equity", "future"],
-                "cadence_recommendation": "monthly_review",
-            }
-        },
-    )
-    assert clarify.status_code == 200
-    assert clarify.json()["ready_for_strategy"] is True
-
-    strategy = client.post(f"/strategies/from-idea/{idea_id}")
-    assert strategy.status_code == 200
-    body = strategy.json()
-    assert len(body["strategy"]["universe"]) > 0
-    assert len(body["audits"]) >= 1
-
-
-def test_backtest_enforces_min_history_unless_overridden() -> None:
-    client, _ = new_client()
-    strategy_id = seed_strategy(client)
-
-    failed = client.post(
-        f"/strategies/{strategy_id}/backtest",
-        json={"min_years": 25, "override_min_history": False},
-    )
-    assert failed.status_code == 400
-
-    passed = client.post(
-        f"/strategies/{strategy_id}/backtest",
-        json={"min_years": 25, "override_min_history": True},
-    )
-    assert passed.status_code == 200
-
-
-def test_manual_rebalance_uses_three_step_approval_chain() -> None:
-    client, service = new_client()
-    service._step3_cooldown = 0
-
-    strategy_id = seed_strategy(client)
-    response = client.post(f"/strategies/{strategy_id}/manual-rebalance")
-    assert response.status_code == 200
-    bundle_id = response.json()["bundle"]["id"]
-
-    s1 = client.post(f"/approval-bundles/{bundle_id}/step-1", json={"token": "pw+totp"})
-    assert s1.status_code == 200
-    assert s1.json()["bundle"]["status"] == "step1_complete"
-
-    s2 = client.post(f"/approval-bundles/{bundle_id}/step-2", json={"token": "oob"})
-    assert s2.status_code == 200
-    assert s2.json()["bundle"]["status"] == "step2_complete"
-
-    s3 = client.post(f"/approval-bundles/{bundle_id}/step-3", json={"token": "final"})
-    assert s3.status_code == 200
-    assert s3.json()["bundle"]["status"] == "approved"
-
-
-def test_runtime_dissent_escalates_and_blocks_bundle() -> None:
-    client, service = new_client()
-    strategy_id = seed_strategy(client)
-
-    def forced_dissent(
-        model: str,
-        stage: str,
-        payload: dict[str, object],
-    ) -> tuple[bool, list[str]]:
-        return False, [f"forced dissent {model} {stage}"]
-
-    service.models.run_check = forced_dissent  # type: ignore[method-assign]
-
-    response = client.post(f"/strategies/{strategy_id}/manual-update")
-    assert response.status_code == 200
-
-    body = response.json()
-    assert body["escalated"] is True
-    assert body["loops_attempted"] == service._max_loops
-    assert body["bundle"]["status"] == "rejected"
-
-
-def test_portfolio_performance_contains_benchmarks() -> None:
-    client, _ = new_client()
-    strategy_id = seed_strategy(client)
-
-    backtest = client.post(
-        f"/strategies/{strategy_id}/backtest",
-        json={"min_years": 10, "override_min_history": False},
-    )
-    assert backtest.status_code == 200
-
-    perf = client.get("/portfolios/operator/performance")
-    assert perf.status_code == 200
-    body = perf.json()
-    assert "sp500" in body["benchmarks"]
-    assert strategy_id in body["strategies"]
-
-
-def test_heavy_metals_atomic_ranges_produce_targeted_universe() -> None:
-    client, _ = new_client()
-
-    response = client.post(
-        "/ideas",
-        json={
-            "user_id": "operator",
-            "raw_idea": (
-                "Create an equal weight heavy metal investment based on the periodic table: "
-                "anything element between atomic number 40-52 and 72-80."
-            ),
-        },
-    )
-    assert response.status_code == 200
-    idea = response.json()["idea"]
-    assert response.json()["ready_for_strategy"] is True
-    assert idea["constraints"]["periodic_table"]["element_symbols"][0] == "Zr"
-
-    strategy = client.post(f"/strategies/from-idea/{idea['id']}")
-    assert strategy.status_code == 200
-    body = strategy.json()
-    symbols = {candidate["symbol"] for candidate in body["strategy"]["universe"]}
-    assert {"PPLT", "PALL", "GLTR", "PL", "PA"}.intersection(symbols)
-    assert "Target elements:" in body["proposal_bullets"][1]
+    strategy = client.post(f"/strategies/from-idea/{create.json()['idea']['id']}")
+    strategy_id = strategy.json()["strategy"]["id"]
+    summary = client.get(f"/strategies/{strategy_id}")
+    assert summary.status_code == 200
+    assert "artifact" not in summary.json()
 
 
 def test_build_store_defaults_to_in_memory_when_database_is_unset() -> None:

@@ -1,0 +1,24 @@
+{
+  "id": "workbook-errors",
+  "seed": "blank",
+  "projects": [
+    "chromium-desktop",
+    "mobile-safari"
+  ],
+  "baseline_refs": ["workbook-errors.json"],
+  "artifact_policy": {
+    "text_timeline": true,
+    "screenshots": "on-failure",
+    "trace": "retain-on-failure"
+  },
+  "steps": [
+    { "id": "chat-api-error", "label": "Inject message submission API failure" },
+    { "id": "convert-api-error", "label": "Inject conversion API failure" },
+    { "id": "reset-stale-state", "label": "Reset after stale UI state" }
+  ],
+  "assertions": [
+    "API failures surface in the error banner",
+    "state does not silently drift after reset",
+    "failure artifacts remain inspectable"
+  ]
+}

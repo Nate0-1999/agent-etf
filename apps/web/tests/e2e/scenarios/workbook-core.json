@@ -1,0 +1,34 @@
+{
+  "id": "workbook-core",
+  "seed": "blank",
+  "projects": [
+    "chromium-desktop",
+    "firefox-desktop",
+    "webkit-desktop",
+    "mobile-chrome",
+    "mobile-safari"
+  ],
+  "baseline_refs": ["workbook-core.json"],
+  "artifact_policy": {
+    "text_timeline": true,
+    "screenshots": "checkpoints",
+    "trace": "retain-on-failure"
+  },
+  "steps": [
+    { "id": "initial-load", "label": "Load workbook shell" },
+    { "id": "create-idea-tab", "label": "Create a new ideation tab" },
+    { "id": "send-message", "label": "Send chat prompt and update workbook" },
+    { "id": "toggle-council", "label": "Expand council details" },
+    { "id": "convert-session", "label": "Convert ideation session to saved index" },
+    { "id": "reopen-ideation", "label": "Open new ideation from saved index" },
+    { "id": "model-admin", "label": "Refresh and approve model registry proposal" },
+    { "id": "reset-runtime", "label": "Clear local runtime data" }
+  ],
+  "assertions": [
+    "workbook shell is interactive",
+    "chat updates tile state",
+    "index conversion populates saved indexes",
+    "model admin refreshes deterministically in test mode",
+    "runtime reset returns to blank state"
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "scenario": "workbook-errors",
+  "checkpoints": {
+    "chat-api-error": {
+      "route": "ideation",
+      "activeTab": "ideation-session",
+      "openTabs": [
+        "New Idea"
+      ],
+      "savedIndexCount": 0,
+      "selectedIndexName": null,
+      "showModelAdmin": false,
+      "pendingModelProposalCount": 0,
+      "error": "{\"detail\":\"Injected message failure\"}",
+      "isBusy": false,
+      "session": {
+        "title": "New Idea",
+        "status": "drafting",
+        "messageCount": 1,
+        "councilHeadline": "Awaiting your thesis to start the workbook.",
+        "tileStatuses": {
+          "thesis": "empty",
+          "exposure_map": "empty",
+          "candidate_vehicles": "empty",
+          "weighting": "empty",
+          "rebalance_maintenance": "empty",
+          "risk_constraints": "empty",
+          "benchmarks": "empty",
+          "approval_rules": "empty",
+          "open_questions": "empty"
+        }
+      }
+    },
+    "convert-api-error": {
+      "route": "ideation",
+      "activeTab": "ideation-session",
+      "openTabs": [
+        "Build a diversified infrastructure index using liquid ETFs and large-cap"
+      ],
+      "savedIndexCount": 0,
+      "selectedIndexName": null,
+      "showModelAdmin": false,
+      "pendingModelProposalCount": 0,
+      "error": "{\"detail\":\"Injected conversion failure\"}",
+      "isBusy": false,
+      "session": {
+        "title": "Build a diversified infrastructure index using liquid ETFs and large-cap",
+        "status": "ready_to_convert",
+        "messageCount": 3,
+        "councilHeadline": "The council is aligned. 7 candidate vehicles are currently in scope.",
+        "tileStatuses": {
+          "thesis": "resolved",
+          "exposure_map": "resolved",
+          "candidate_vehicles": "resolved",
+          "weighting": "resolved",
+          "rebalance_maintenance": "resolved",
+          "risk_constraints": "resolved",
+          "benchmarks": "resolved",
+          "approval_rules": "resolved",
+          "open_questions": "resolved"
+        }
+      }
+    },
+    "reset-stale-state": {
+      "route": "saved-indexes",
+      "activeTab": "saved-indexes",
+      "openTabs": [],
+      "savedIndexCount": 0,
+      "selectedIndexName": null,
+      "showModelAdmin": true,
+      "pendingModelProposalCount": 0,
+      "error": null,
+      "isBusy": false,
+      "session": null
+    }
+  }
+}

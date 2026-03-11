@@ -1,21 +1,531 @@
 :root {
-  --bg: #f1efe8;
-  --ink: #1d2228;
-  --accent: #af4e1c;
-  --card: #fffaf0;
+  --page-bg: #eef2f5;
+  --page-ink: #17202b;
+  --muted: #5b6773;
+  --line: #cad4de;
+  --sheet: #fdfdfb;
+  --sheet-strong: #ffffff;
+  --excel-green: #1d6f42;
+  --excel-green-soft: #d8eadc;
+  --gold: #bc8a2b;
+  --danger: #8f3043;
+  --danger-soft: #f2dce1;
+  --shadow: 0 16px 38px rgba(27, 44, 65, 0.08);
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
+body {
+  min-height: 100%;
+}
+
 body {
   margin: 0;
+  color: var(--page-ink);
   font-family: "IBM Plex Sans", "Avenir Next", sans-serif;
-  background: radial-gradient(circle at 10% 20%, #f8e8c9 0%, var(--bg) 40%, #d9e5ef 100%);
-  color: var(--ink);
+  background:
+    linear-gradient(180deg, rgba(29, 111, 66, 0.08), transparent 24%),
+    linear-gradient(90deg, rgba(29, 111, 66, 0.04) 1px, transparent 1px),
+    linear-gradient(rgba(29, 111, 66, 0.04) 1px, transparent 1px),
+    var(--page-bg);
+  background-size: auto, 28px 28px, 28px 28px, auto;
+}
+
+button,
+textarea,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
 }
 
 a {
   color: inherit;
+}
+
+.workbookApp {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.topbar,
+.sheetPanel,
+.adminPanel,
+.errorBanner {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--sheet-strong);
+  box-shadow: var(--shadow);
+}
+
+.topbar,
+.adminPanel {
+  display: grid;
+  gap: 16px;
+  padding: 18px 20px;
+}
+
+.topbar {
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.8fr);
+  align-items: start;
+}
+
+.brandBlock h1,
+.savedCanvas h2,
+.workbookCanvas h2 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 0.96;
+}
+
+.eyebrow,
+.panelLabel,
+.messageRole {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.lede,
+.microcopy,
+.summaryCard p,
+.tileCard p,
+.auditCard p,
+.messageBubble p,
+.emptyCanvas p,
+.emptyState {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.headerControls,
+.adminActions,
+.statusStack,
+.sessionMeta,
+.composerActions,
+.auditHeader,
+.sectionHeader,
+.tileHeader,
+.benchmarkRow,
+.holdingRow {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.headerControls,
+.adminActions,
+.statusStack {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.headerButton,
+.modelBadge,
+.tab,
+.indexCard {
+  border: 1px solid var(--line);
+  background: var(--sheet);
+  color: var(--page-ink);
+}
+
+.headerButton,
+.modelBadge,
+.tab {
+  border-radius: 12px;
+  padding: 11px 14px;
+}
+
+.headerButton {
+  background: var(--excel-green);
+  border-color: var(--excel-green);
+  color: #ffffff;
+}
+
+.headerButton.secondary {
+  background: var(--sheet);
+  color: var(--page-ink);
+  border-color: var(--line);
+}
+
+.modelBadge {
+  display: grid;
+  gap: 2px;
+  min-width: 310px;
+  text-align: left;
+}
+
+.modelBadge span,
+.modelBadge em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.tabbar {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin: 18px 0 16px;
+  overflow-x: auto;
+}
+
+.tab {
+  border-bottom-width: 3px;
+  background: linear-gradient(180deg, #fafdfb 0%, #edf4ef 100%);
+}
+
+.tab.active {
+  border-color: var(--excel-green);
+  background: var(--sheet-strong);
+  color: var(--excel-green);
+}
+
+.errorBanner {
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.adminPanel {
+  margin-top: 16px;
+}
+
+.modelGrid,
+.proposalList,
+.tileGrid,
+.summaryGrid,
+.detailGrid,
+.timeframeGrid,
+.auditList,
+.indexList,
+.holdingsList,
+.benchmarkList,
+.messageList {
+  display: grid;
+  gap: 12px;
+}
+
+.modelGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.modelCard,
+.proposalCard,
+.summaryCard,
+.tileCard,
+.auditCard,
+.messageBubble,
+.indexCard {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--sheet);
+}
+
+.modelCard,
+.proposalCard,
+.summaryCard,
+.tileCard,
+.auditCard,
+.messageBubble {
+  padding: 14px;
+}
+
+.modelCard,
+.proposalCard {
+  display: grid;
+  gap: 10px;
+}
+
+.savedIndexesLayout,
+.ideationLayout {
+  display: grid;
+  gap: 16px;
+}
+
+.savedIndexesLayout {
+  grid-template-columns: minmax(280px, 330px) minmax(0, 1fr);
+}
+
+.ideationLayout {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.75fr);
+}
+
+.sheetPanel {
+  padding: 18px;
+}
+
+.savedRail,
+.chatRail {
+  min-height: 72vh;
+}
+
+.savedCanvas,
+.workbookCanvas {
+  min-height: 72vh;
+  background:
+    linear-gradient(90deg, rgba(29, 111, 66, 0.04) 1px, transparent 1px),
+    linear-gradient(rgba(29, 111, 66, 0.04) 1px, transparent 1px),
+    var(--sheet-strong);
+  background-size: 32px 32px, 32px 32px, auto;
+}
+
+.sectionHeader h2,
+.sectionHeader h3 {
+  margin: 0;
+}
+
+.sectionHeader.compact {
+  align-items: start;
+}
+
+.indexCard {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  text-align: left;
+}
+
+.indexCard.selected {
+  border-color: var(--excel-green);
+  box-shadow: inset 0 0 0 1px rgba(29, 111, 66, 0.15);
+}
+
+.summaryGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.summaryCard.full {
+  grid-column: 1 / -1;
+}
+
+.detailGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.timeframeGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.metricCell {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--sheet-strong);
+}
+
+.metricCell strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 1.1rem;
+}
+
+.tileGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.tileCard {
+  min-height: 178px;
+}
+
+.tile-empty {
+  background: #fbfcfd;
+}
+
+.tile-in_progress,
+.tile-needs_user_input {
+  background: #fff9ef;
+}
+
+.tile-resolved {
+  background: #f4fbf6;
+}
+
+.tile-blocked_by_council {
+  background: var(--danger-soft);
+}
+
+.councilPanel {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.auditList {
+  margin-top: 14px;
+}
+
+.chatRail {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.messageList {
+  align-content: start;
+  max-height: 52vh;
+  padding-right: 4px;
+  overflow: auto;
+}
+
+.messageBubble {
+  display: grid;
+  gap: 8px;
+}
+
+.role-user {
+  background: #eff7f1;
+  border-color: #b9d4c0;
+}
+
+.role-assistant,
+.role-council {
+  background: #f8fafc;
+}
+
+.composer {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.composer textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  resize: vertical;
+  background: var(--sheet-strong);
+  color: var(--page-ink);
+}
+
+.bulletList {
+  margin: 14px 0 0;
+  padding-left: 18px;
+}
+
+.bulletList.compact {
+  display: grid;
+  gap: 6px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pill-draft,
+.pill-drafting,
+.pill-in_progress,
+.pill-needs_user_input,
+.pill-neutral {
+  background: #fff2d6;
+  color: var(--gold);
+}
+
+.pill-active,
+.pill-resolved,
+.pill-converted,
+.pill-ready_to_convert {
+  background: var(--excel-green-soft);
+  color: var(--excel-green);
+}
+
+.pill-paused,
+.pill-blocked_by_council,
+.pill-dissent {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.holdingsList,
+.benchmarkList {
+  margin-top: 12px;
+}
+
+.holdingRow,
+.benchmarkRow {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.holdingRow:last-child,
+.benchmarkRow:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.holdingRow div,
+.benchmarkBlock {
+  display: grid;
+  gap: 4px;
+}
+
+.footerAction {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.emptyCanvas {
+  display: grid;
+  gap: 12px;
+  align-content: center;
+  min-height: 50vh;
+}
+
+@media (max-width: 1200px) {
+  .savedIndexesLayout,
+  .ideationLayout,
+  .topbar,
+  .summaryGrid,
+  .detailGrid,
+  .modelGrid,
+  .timeframeGrid,
+  .tileGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .workbookApp {
+    padding: 14px;
+  }
+
+  .headerControls,
+  .statusStack,
+  .sectionHeader,
+  .composerActions,
+  .holdingRow,
+  .benchmarkRow,
+  .tileHeader {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .modelBadge {
+    min-width: 0;
+    width: 100%;
+  }
 }
