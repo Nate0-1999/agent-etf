@@ -14,16 +14,16 @@ class BudgetState:
 
 
 class OpenRouterModelService:
-    """OpenRouter-compatible model service stub.
+    """Deterministic, budget-aware council stub.
 
-    This implementation is deterministic and budget-aware for local development.
+    The registry decides which provider trio is active. This service only simulates
+    audit/ranking behavior for local development.
     """
 
     _model_cost = {
-        "openai:gpt-5": 0.06,
-        "anthropic:claude-sonnet-4": 0.05,
-        "google:gemini-2.5-pro": 0.04,
-        "xai:grok-3": 0.05,
+        "openai:gpt-5.4": 0.08,
+        "anthropic:claude-4.6": 0.06,
+        "google:gemini-3.1-pro": 0.05,
     }
 
     def __init__(self, monthly_budget_usd: float = 150.0) -> None:
@@ -39,7 +39,7 @@ class OpenRouterModelService:
         stage: str,
         payload: dict[str, object],
     ) -> tuple[bool, list[str]]:
-        model_cost = self._model_cost.get(model, 0.04)
+        model_cost = self._model_cost.get(model, 0.05)
         if self._budget.spent_usd + model_cost > self._budget.monthly_budget_usd:
             return False, ["Monthly LLM budget exceeded"]
 
@@ -48,7 +48,12 @@ class OpenRouterModelService:
         if payload.get("requires_user_approval") is False:
             return False, ["Missing required user approval flag"]
 
-        if stage in {"candidate_ranking", "runtime_update", "runtime_rebalance"}:
+        if stage in {
+            "candidate_ranking",
+            "runtime_update",
+            "runtime_rebalance",
+            "session_ideation",
+        }:
             candidates = payload.get("candidates")
             if isinstance(candidates, list) and len(candidates) == 0:
                 return False, ["No candidate instruments available"]
@@ -56,12 +61,15 @@ class OpenRouterModelService:
         if stage == "runtime_rebalance" and not payload.get("target_allocations"):
             return False, ["Rebalance requires target allocations"]
 
+        if stage == "session_ideation" and not str(payload.get("thesis", "")).strip():
+            return False, ["Ideation thesis is blank"]
+
         if bool(payload.get("force_dissent_for_test")):
             stable = json.dumps(payload, sort_keys=True, default=str)
             if hashlib.sha256(stable.encode("utf-8")).hexdigest().endswith("0"):
                 return False, ["Forced dissent trigger active"]
 
-        return True, ["Audit checks passed"]
+        return True, [f"{model} accepted the current session state"]
 
     def rank_candidates(
         self,
@@ -76,13 +84,12 @@ class OpenRouterModelService:
             overlap = len(tokens.intersection(name_tokens))
             if "equal" in tokens:
                 base += 0.02
+            if "index" in tokens or "indexing" in tokens:
+                base += 0.01
             return float(min(1.0, base + overlap * 0.03))
 
         ranked = sorted(candidates, key=score, reverse=True)
-        output: list[CandidateInstrument] = []
-        for item in ranked:
-            output.append(item.model_copy(update={"relevance_score": score(item)}))
-        return output
+        return [item.model_copy(update={"relevance_score": score(item)}) for item in ranked]
 
     @staticmethod
     def summarize_dissent(reports: list[dict[str, object]]) -> str:

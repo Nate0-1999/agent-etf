@@ -9,6 +9,7 @@ from bootstrap_paths import add_project_paths
 add_project_paths()
 
 from agent_etf_contracts.models import (
+    AppendIdeationMessageRequest,
     ApprovalAction,
     ApprovalBundleResponse,
     ApprovalStepRequest,
@@ -16,10 +17,20 @@ from agent_etf_contracts.models import (
     BrokerLimitsRequest,
     BrokerLinkRequest,
     ClarifyIdeaRequest,
+    ConvertIdeationSessionResponse,
     CreateIdeaRequest,
+    CreateIdeationSessionRequest,
     CreateStrategyFromIdeaResponse,
+    CurrentModelSetResponse,
+    DevResetResponse,
     IdeaStatusResponse,
+    IdeationSessionDetailResponse,
+    IdeationSessionListResponse,
+    IndexDetail,
+    IndexListResponse,
     ManualActionResponse,
+    ModelProposalListResponse,
+    ModelRefreshResponse,
     PortfolioPerformanceResponse,
     StrategyDefinition,
     StrategyListResponse,
@@ -30,7 +41,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.agent_etf_api.service import ControlPlaneService
 
-app = FastAPI(title="agent-etf API", version="0.1.0")
+app = FastAPI(title="Agentic Indexing API", version="0.2.0")
 allowed_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -162,6 +173,97 @@ def approval_step3(bundle_id: str, payload: ApprovalStepRequest) -> ApprovalBund
         return ApprovalBundleResponse(bundle=bundle)
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/ideation/sessions", response_model=IdeationSessionListResponse)
+def list_ideation_sessions(user_id: str = "operator") -> IdeationSessionListResponse:
+    return service.list_ideation_sessions(user_id=user_id)
+
+
+@app.post("/ideation/sessions", response_model=IdeationSessionDetailResponse)
+def create_ideation_session(payload: CreateIdeationSessionRequest) -> IdeationSessionDetailResponse:
+    return service.create_ideation_session(payload)
+
+
+@app.get("/ideation/sessions/{session_id}", response_model=IdeationSessionDetailResponse)
+def get_ideation_session(session_id: str) -> IdeationSessionDetailResponse:
+    try:
+        return service.get_ideation_session(session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/ideation/sessions/{session_id}/messages", response_model=IdeationSessionDetailResponse)
+def append_ideation_message(
+    session_id: str,
+    payload: AppendIdeationMessageRequest,
+) -> IdeationSessionDetailResponse:
+    try:
+        return service.append_ideation_message(session_id, payload)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post(
+    "/ideation/sessions/{session_id}/convert-to-index",
+    response_model=ConvertIdeationSessionResponse,
+)
+def convert_ideation_session(session_id: str) -> ConvertIdeationSessionResponse:
+    try:
+        return service.convert_ideation_session(session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/indexes", response_model=IndexListResponse)
+def list_indexes() -> IndexListResponse:
+    return service.list_indexes()
+
+
+@app.get("/indexes/{index_id}", response_model=IndexDetail)
+def get_index(index_id: str) -> IndexDetail:
+    try:
+        return service.get_index(index_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/indexes/{index_id}/open-ideation", response_model=IdeationSessionDetailResponse)
+def open_ideation_from_index(index_id: str) -> IdeationSessionDetailResponse:
+    try:
+        return service.open_ideation_from_index(index_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/models/current", response_model=CurrentModelSetResponse)
+def current_models() -> CurrentModelSetResponse:
+    return service.current_model_set()
+
+
+@app.get("/models/proposals", response_model=ModelProposalListResponse)
+def list_model_proposals() -> ModelProposalListResponse:
+    return service.list_model_proposals()
+
+
+@app.post("/models/refresh", response_model=ModelRefreshResponse)
+def refresh_models() -> ModelRefreshResponse:
+    return service.refresh_models()
+
+
+@app.post("/models/proposals/{proposal_id}/approve", response_model=CurrentModelSetResponse)
+def approve_model_proposal(proposal_id: str) -> CurrentModelSetResponse:
+    try:
+        return service.approve_model_proposal(proposal_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/dev/reset", response_model=DevResetResponse)
+def dev_reset() -> DevResetResponse:
+    return service.dev_reset()
 
 
 @app.post("/broker-connections/ibkr/link")

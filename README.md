@@ -1,10 +1,10 @@
-# agent-etf
+# Agentic Indexing
 
-Paper-first, safety-first agentic workflow for turning user investment ideas into user-approved strategy proposals, deterministic strategy artifacts, backtests, and strictly gated execution flows.
+Paper-first, safety-first workbook for turning user investment ideas into user-approved custom indexes, backtests, and strictly gated execution flows.
 
 ## Monorepo Layout
 
-- `apps/web`: Next.js dashboard and approval UX
+- `apps/web`: Next.js workbook UI and approval UX
 - `apps/api`: FastAPI control plane
 - `workers/temporal`: Temporal workflows and workers
 - `services/research`: investment vehicle discovery and normalization
@@ -35,7 +35,7 @@ Local URLs:
 
 - API: `http://127.0.0.1:8000`
 - Web: `http://localhost:3000`
-- The web dashboard includes a one-click heavy-metals draft flow and will also load saved strategies from Postgres on refresh.
+- The web app opens to the Agentic Indexing workbook, with `Saved Indexes` plus chat-driven ideation tabs backed by Postgres.
 
 Docker dev stack:
 
@@ -47,8 +47,8 @@ docker compose -f infra/docker-compose/docker-compose.yml up --build
 
 - `CLOUD_SQL_CONNECTION_NAME`: required when using `make db-proxy` against Cloud SQL.
 - `DATABASE_URL`: required for durable Postgres-backed state.
-- `OPENROUTER_API_KEY`: enables real multi-model checks through OpenRouter.
-- `EXA_API_KEY`: enables live web research instead of fallback stub results.
+- `OPENROUTER_API_KEY`: enables real multi-model checks and model registry refresh through OpenRouter.
+- `EXA_API_KEY`: optional if you want a second search provider beyond OpenRouter-based search.
 - `IBKR` paper credentials and gateway/TWS connection details: required once the paper adapter is upgraded from stubbed previews to real broker calls.
 
 Without these keys the app still runs, but it falls back to in-memory storage or deterministic stubs where appropriate.
@@ -65,6 +65,14 @@ make db-proxy
 Then point `DATABASE_URL` at `127.0.0.1:5432`. This keeps local access tied to your Google auth instead of a temporary authorized network entry for your current public IP.
 
 This is not optional documentation. The full operational and security procedure is in [docs/runbooks/CLOUD_SQL_PROXY.md](/Users/nateoswalt/agent-etf/docs/runbooks/CLOUD_SQL_PROXY.md).
+
+## Product Shape
+
+- The visible product is `Agentic Indexing`; internal package names still use `agent_etf` for now.
+- The workbook shell has one fixed `Saved Indexes` tab and dynamic ideation tabs.
+- The right rail is a chat-driven ideation thread; the left side is a decision canvas that fills in as the council resolves specification details.
+- Saved indexes show thesis, holdings, performance windows, benchmark comparison, and rebalance cadence.
+- Model selection is admin-approved: one OpenAI, one Anthropic, and one Google model at a time.
 
 ## Safety Notes
 

@@ -3,17 +3,30 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type {
-  CreateIdeaResponse,
-  CreateStrategyFromIdeaResponse,
-  ManualActionResponse,
-  StrategyListItem,
-  StrategyListResponse,
-  StrategySummaryResponse,
+  ApprovedModelSet,
+  ConvertIdeationSessionResponse,
+  CouncilSummary,
+  CurrentModelSetResponse,
+  DevResetResponse,
+  IdeationMessage,
+  IdeationSession,
+  IdeationSessionDetailResponse,
+  IdeationSessionListResponse,
+  IndexDetail,
+  IndexListResponse,
+  IndexSummary,
+  ModelProposalListResponse,
+  ModelRefreshResponse,
+  PendingModelSetProposal,
+  TimeframePerformance,
 } from "../lib/types";
 
-const DEFAULT_IDEA =
-  "Create an equal weight heavy metal investment based on the periodic table: anything element between atomic number 40-52 and 72-80.";
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+const SAVED_INDEXES_TAB = "saved-indexes";
+const OPEN_TABS_KEY = "agentic-indexing.open-tabs";
+const ACTIVE_TAB_KEY = "agentic-indexing.active-tab";
+
+type SessionDetailMap = Record<string, IdeationSessionDetailResponse>;
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -43,447 +56,680 @@ function formatLabel(value: string): string {
   return value.replaceAll("_", " ");
 }
 
-function buildClarifyPayload(rawIdea: string) {
-  return {
-    answers: {
-      objective: rawIdea,
-      allowed_assets: ["etf", "equity", "future"],
-      cadence_recommendation: "monthly_review",
-    },
-  };
+function shortTabTitle(value: string): string {
+  return value.length > 22 ? `${value.slice(0, 19)}...` : value;
+}
+
+function loadStoredTabIds(): string[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  const raw = window.localStorage.getItem(OPEN_TABS_KEY);
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function loadStoredActiveTab(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return window.localStorage.getItem(ACTIVE_TAB_KEY);
+}
+
+function persistWorkspace(openSessionIds: string[], activeTab: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(OPEN_TABS_KEY, JSON.stringify(openSessionIds));
+  window.localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
+}
+
+function sessionStatusLabel(status: IdeationSession["status"]): string {
+  return status.replaceAll("_", " ");
+}
+
+function performanceRow(timeframe: TimeframePerformance) {
+  return Object.entries(timeframe.benchmark_returns).map(([name, value]) => ({
+    name,
+    value,
+  }));
+}
+
+function councilCount(summary: CouncilSummary | null): string {
+  if (!summary) {
+    return "Council idle";
+  }
+  return `${summary.reports.length} checks`;
 }
 
 export function Dashboard() {
-  const [ideaText, setIdeaText] = useState(DEFAULT_IDEA);
-  const [strategies, setStrategies] = useState<StrategyListItem[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [summary, setSummary] = useState<StrategySummaryResponse | null>(null);
-  const [proposal, setProposal] = useState<CreateStrategyFromIdeaResponse | null>(null);
-  const [activityLog, setActivityLog] = useState<string[]>([]);
-  const [isBusy, setIsBusy] = useState(false);
+  const [sessions, setSessions] = useState<IdeationSession[]>([]);
+  const [sessionDetails, setSessionDetails] = useState<SessionDetailMap>({});
+  const [openSessionIds, setOpenSessionIds] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<string>(SAVED_INDEXES_TAB);
+  const [indexes, setIndexes] = useState<IndexSummary[]>([]);
+  const [selectedIndexId, setSelectedIndexId] = useState<string | null>(null);
+  const [indexDetail, setIndexDetail] = useState<IndexDetail | null>(null);
+  const [currentModels, setCurrentModels] = useState<ApprovedModelSet | null>(null);
+  const [modelProposals, setModelProposals] = useState<PendingModelSetProposal[]>([]);
+  const [showModelAdmin, setShowModelAdmin] = useState(false);
+  const [expandedCouncilTab, setExpandedCouncilTab] = useState<string | null>(null);
+  const [messageDraft, setMessageDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [isBusy, setIsBusy] = useState(false);
 
-  const selectedStrategy = summary?.strategy ?? null;
-  const benchmarkRows = useMemo(() => {
-    if (!summary?.latest_backtest) {
-      return [];
-    }
-    return Object.entries(summary.latest_backtest.benchmark_metrics);
-  }, [summary]);
+  const activeSessionId = activeTab === SAVED_INDEXES_TAB ? null : activeTab;
+  const activeSession = activeSessionId ? sessionDetails[activeSessionId]?.session ?? null : null;
+  const activeMessages = activeSessionId ? sessionDetails[activeSessionId]?.messages ?? [] : [];
 
-  const loadStrategy = useCallback(async (strategyId: string) => {
-    const nextSummary = await apiRequest<StrategySummaryResponse>(`/strategies/${strategyId}`);
-    setSelectedId(strategyId);
-    setSummary(nextSummary);
-  }, []);
+  const openSessions = useMemo(() => {
+    const byId = new Map(sessions.map((session) => [session.id, session]));
+    return openSessionIds.map((id) => byId.get(id)).filter((session): session is IdeationSession => Boolean(session));
+  }, [openSessionIds, sessions]);
 
-  const refreshStrategies = useCallback(
-    async (preferredId?: string) => {
-      const listing = await apiRequest<StrategyListResponse>("/strategies");
-      setStrategies(listing.strategies);
-
-      const nextId = preferredId ?? selectedId ?? listing.strategies[0]?.id ?? null;
-      if (nextId) {
-        await loadStrategy(nextId);
-      } else {
-        setSelectedId(null);
-        setSummary(null);
-      }
-    },
-    [loadStrategy, selectedId],
+  const selectedIndex = useMemo(
+    () => indexes.find((item) => item.id === selectedIndexId) ?? null,
+    [indexes, selectedIndexId],
   );
 
-  useEffect(() => {
-    void refreshStrategies();
-  }, [refreshStrategies]);
+  const refreshModels = useCallback(async () => {
+    const [current, proposals] = await Promise.all([
+      apiRequest<CurrentModelSetResponse>("/models/current"),
+      apiRequest<ModelProposalListResponse>("/models/proposals"),
+    ]);
+    setCurrentModels(current.model_set);
+    setModelProposals(proposals.proposals.filter((item) => item.status === "pending"));
+  }, []);
 
-  async function runHeavyMetalsFlow() {
+  const ensureSessionLoaded = useCallback(async (sessionId: string) => {
+    const detail = await apiRequest<IdeationSessionDetailResponse>(`/ideation/sessions/${sessionId}`);
+    setSessionDetails((current) => ({ ...current, [sessionId]: detail }));
+    setSessions((current) => {
+      const next = current.filter((item) => item.id !== detail.session.id);
+      next.unshift(detail.session);
+      return next;
+    });
+    return detail;
+  }, []);
+
+  const refreshIndexes = useCallback(async (preferredIndexId?: string) => {
+    const listing = await apiRequest<IndexListResponse>("/indexes");
+    setIndexes(listing.indexes);
+
+    const nextSelected = preferredIndexId ?? selectedIndexId ?? listing.indexes[0]?.id ?? null;
+    setSelectedIndexId(nextSelected);
+    if (nextSelected) {
+      const detail = await apiRequest<IndexDetail>(`/indexes/${nextSelected}`);
+      setIndexDetail(detail);
+    } else {
+      setIndexDetail(null);
+    }
+  }, [selectedIndexId]);
+
+  const refreshSessions = useCallback(async () => {
+    const listing = await apiRequest<IdeationSessionListResponse>("/ideation/sessions?user_id=operator");
+    setSessions(listing.sessions);
+
+    const storedOpen = loadStoredTabIds();
+    const availableIds = new Set(listing.sessions.map((session) => session.id));
+    const nextOpen = storedOpen.filter((id) => availableIds.has(id));
+    setOpenSessionIds(nextOpen);
+
+    const storedActive = loadStoredActiveTab();
+    if (storedActive === SAVED_INDEXES_TAB || (storedActive && availableIds.has(storedActive))) {
+      setActiveTab(storedActive);
+    } else {
+      setActiveTab(SAVED_INDEXES_TAB);
+    }
+  }, []);
+
+  const refreshAll = useCallback(async () => {
+    await Promise.all([refreshSessions(), refreshIndexes(), refreshModels()]);
+  }, [refreshIndexes, refreshModels, refreshSessions]);
+
+  useEffect(() => {
+    void refreshAll().catch((nextError) => {
+      setError(nextError instanceof Error ? nextError.message : "Failed to load dashboard");
+    });
+  }, [refreshAll]);
+
+  useEffect(() => {
+    persistWorkspace(openSessionIds, activeTab);
+  }, [activeTab, openSessionIds]);
+
+  useEffect(() => {
+    if (activeSessionId && !sessionDetails[activeSessionId]) {
+      void ensureSessionLoaded(activeSessionId).catch((nextError) => {
+        setError(nextError instanceof Error ? nextError.message : "Failed to load ideation tab");
+      });
+    }
+  }, [activeSessionId, ensureSessionLoaded, sessionDetails]);
+
+  const createNewIdeaTab = useCallback(async () => {
     setIsBusy(true);
     setError(null);
-    setProposal(null);
-    setActivityLog([]);
-
     try {
-      setActivityLog((current) => [...current, "Create idea"]);
-      const idea = await apiRequest<CreateIdeaResponse>("/ideas", {
+      const nextNumber = sessions.length + 1;
+      const detail = await apiRequest<IdeationSessionDetailResponse>("/ideation/sessions", {
         method: "POST",
         body: JSON.stringify({
           user_id: "operator",
-          raw_idea: ideaText,
+          title: nextNumber === 1 ? "New Idea" : `Idea ${nextNumber}`,
         }),
       });
+      setSessionDetails((current) => ({ ...current, [detail.session.id]: detail }));
+      setSessions((current) => [detail.session, ...current]);
+      setOpenSessionIds((current) => [detail.session.id, ...current.filter((id) => id !== detail.session.id)]);
+      setActiveTab(detail.session.id);
+      setMessageDraft("");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Failed to create ideation tab");
+    } finally {
+      setIsBusy(false);
+    }
+  }, [sessions.length]);
 
-      let readyIdea = idea;
-      if (!idea.ready_for_strategy) {
-        setActivityLog((current) => [...current, "Clarify missing constraints"]);
-        readyIdea = await apiRequest<CreateIdeaResponse>(`/ideas/${idea.idea.id}/clarify`, {
-          method: "POST",
-          body: JSON.stringify(buildClarifyPayload(ideaText)),
-        });
-      }
+  const activateSavedIndexes = useCallback(async () => {
+    setActiveTab(SAVED_INDEXES_TAB);
+    if (selectedIndexId) {
+      const detail = await apiRequest<IndexDetail>(`/indexes/${selectedIndexId}`);
+      setIndexDetail(detail);
+    }
+  }, [selectedIndexId]);
 
-      setActivityLog((current) => [...current, "Create strategy proposal"]);
-      const created = await apiRequest<CreateStrategyFromIdeaResponse>(
-        `/strategies/from-idea/${readyIdea.idea.id}`,
+  const sendMessage = useCallback(async () => {
+    if (!activeSessionId || !messageDraft.trim()) {
+      return;
+    }
+    setIsBusy(true);
+    setError(null);
+    try {
+      const detail = await apiRequest<IdeationSessionDetailResponse>(
+        `/ideation/sessions/${activeSessionId}/messages`,
         {
           method: "POST",
+          body: JSON.stringify({ content: messageDraft.trim() }),
         },
       );
-      setProposal(created);
-
-      setActivityLog((current) => [...current, "Run deterministic backtest"]);
-      await apiRequest(`/strategies/${created.strategy.id}/backtest`, {
-        method: "POST",
-        body: JSON.stringify({ min_years: 10, override_min_history: false }),
+      setSessionDetails((current) => ({ ...current, [activeSessionId]: detail }));
+      setSessions((current) => {
+        const next = current.filter((item) => item.id !== detail.session.id);
+        next.unshift(detail.session);
+        return next;
       });
-
-      setActivityLog((current) => [...current, "Prepare rebalance approval bundle"]);
-      await apiRequest<ManualActionResponse>(`/strategies/${created.strategy.id}/manual-rebalance`, {
-        method: "POST",
-      });
-
-      setActivityLog((current) => [...current, "Load strategy dossier"]);
-      await refreshStrategies(created.strategy.id);
+      setMessageDraft("");
     } catch (nextError) {
-      const message = nextError instanceof Error ? nextError.message : "Unknown error";
-      setError(message);
+      setError(nextError instanceof Error ? nextError.message : "Failed to send message");
     } finally {
       setIsBusy(false);
     }
-  }
+  }, [activeSessionId, messageDraft]);
 
-  async function approveDraft() {
-    if (!selectedStrategy || selectedStrategy.status !== "draft") {
+  const convertSession = useCallback(async () => {
+    if (!activeSessionId) {
       return;
     }
-
     setIsBusy(true);
     setError(null);
     try {
-      await apiRequest(`/strategies/${selectedStrategy.id}/approve-create`, {
-        method: "POST",
+      const converted = await apiRequest<ConvertIdeationSessionResponse>(
+        `/ideation/sessions/${activeSessionId}/convert-to-index`,
+        { method: "POST" },
+      );
+      setSessionDetails((current) => ({
+        ...current,
+        [activeSessionId]: {
+          ...(current[activeSessionId] ?? { messages: [] }),
+          session: converted.session,
+          messages: current[activeSessionId]?.messages ?? [],
+        },
+      }));
+      setSessions((current) => {
+        const next = current.filter((item) => item.id !== converted.session.id);
+        next.unshift(converted.session);
+        return next;
       });
-      await refreshStrategies(selectedStrategy.id);
+      await refreshIndexes(converted.index.id);
+      setActiveTab(SAVED_INDEXES_TAB);
     } catch (nextError) {
-      const message = nextError instanceof Error ? nextError.message : "Unknown error";
-      setError(message);
+      setError(nextError instanceof Error ? nextError.message : "Failed to convert session");
     } finally {
       setIsBusy(false);
     }
-  }
+  }, [activeSessionId, refreshIndexes]);
 
-  async function refreshRebalancePreview() {
-    if (!selectedStrategy) {
-      return;
-    }
-
+  const openIndexAsIdea = useCallback(async (indexId: string) => {
     setIsBusy(true);
     setError(null);
     try {
-      await apiRequest<ManualActionResponse>(`/strategies/${selectedStrategy.id}/manual-rebalance`, {
+      const detail = await apiRequest<IdeationSessionDetailResponse>(`/indexes/${indexId}/open-ideation`, {
         method: "POST",
       });
-      await loadStrategy(selectedStrategy.id);
+      setSessionDetails((current) => ({ ...current, [detail.session.id]: detail }));
+      setSessions((current) => [detail.session, ...current.filter((item) => item.id !== detail.session.id)]);
+      setOpenSessionIds((current) => [detail.session.id, ...current.filter((id) => id !== detail.session.id)]);
+      setActiveTab(detail.session.id);
     } catch (nextError) {
-      const message = nextError instanceof Error ? nextError.message : "Unknown error";
-      setError(message);
+      setError(nextError instanceof Error ? nextError.message : "Failed to open ideation tab");
     } finally {
       setIsBusy(false);
     }
-  }
+  }, []);
+
+  const selectIndex = useCallback(async (indexId: string) => {
+    setSelectedIndexId(indexId);
+    setError(null);
+    try {
+      const detail = await apiRequest<IndexDetail>(`/indexes/${indexId}`);
+      setIndexDetail(detail);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Failed to load index");
+    }
+  }, []);
+
+  const refreshModelRegistry = useCallback(async () => {
+    setIsBusy(true);
+    setError(null);
+    try {
+      const response = await apiRequest<ModelRefreshResponse>("/models/refresh", { method: "POST" });
+      setCurrentModels(response.current);
+      await refreshModels();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Failed to refresh model registry");
+    } finally {
+      setIsBusy(false);
+    }
+  }, [refreshModels]);
+
+  const approveModelProposal = useCallback(async (proposalId: string) => {
+    setIsBusy(true);
+    setError(null);
+    try {
+      const current = await apiRequest<CurrentModelSetResponse>(`/models/proposals/${proposalId}/approve`, {
+        method: "POST",
+      });
+      setCurrentModels(current.model_set);
+      await refreshModels();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Failed to approve model proposal");
+    } finally {
+      setIsBusy(false);
+    }
+  }, [refreshModels]);
+
+  const resetLocalRuntime = useCallback(async () => {
+    setIsBusy(true);
+    setError(null);
+    try {
+      await apiRequest<DevResetResponse>("/dev/reset", { method: "POST" });
+      setSessionDetails({});
+      setOpenSessionIds([]);
+      setActiveTab(SAVED_INDEXES_TAB);
+      setSelectedIndexId(null);
+      setIndexDetail(null);
+      await refreshAll();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Failed to clear local runtime data");
+    } finally {
+      setIsBusy(false);
+    }
+  }, [refreshAll]);
 
   return (
-    <main className="shell">
-      <section className="hero">
-        <div>
-          <p className="eyebrow">Local strategy workstation</p>
-          <h1>Heavy metals strategy generator</h1>
+    <main className="workbookApp">
+      <header className="topbar">
+        <div className="brandBlock">
+          <p className="eyebrow">Agentic Indexing</p>
+          <h1>Workbook for custom index design</h1>
           <p className="lede">
-            This local view drives the real API flow: idea intake, deterministic strategy proposal,
-            backtest, and approval-bundle preview.
+            Chat drives the specification on the right. The workbook tiles on the left fill in as
+            the thesis, vehicles, benchmarks, and approval rules become concrete.
           </p>
         </div>
-        <div className="heroStat">
-          <span className="heroStatLabel">API target</span>
-          <strong>{API_BASE}</strong>
-          <span className="heroStatHint">Run the API on localhost before opening this page.</span>
+
+        <div className="headerControls">
+          <button className="headerButton" onClick={createNewIdeaTab} disabled={isBusy} type="button">
+            + New Idea
+          </button>
+          <button
+            className="modelBadge"
+            onClick={() => setShowModelAdmin((current) => !current)}
+            type="button"
+          >
+            <span>Model Set</span>
+            <strong>
+              {currentModels
+                ? `${currentModels.openai_model.label} / ${currentModels.anthropic_model.label} / ${currentModels.google_model.label}`
+                : "Loading..."}
+            </strong>
+            <em>{modelProposals.length} pending</em>
+          </button>
         </div>
+      </header>
+
+      {showModelAdmin ? (
+        <section className="adminPanel">
+          <div>
+            <p className="panelLabel">Current approved trio</p>
+            {currentModels ? (
+              <div className="modelGrid">
+                {[currentModels.openai_model, currentModels.anthropic_model, currentModels.google_model].map((item) => (
+                  <article key={item.id} className="modelCard">
+                    <span className="pill pill-neutral">{item.provider}</span>
+                    <strong>{item.label}</strong>
+                    <a href={item.official_doc_url} rel="noreferrer" target="_blank">
+                      official docs
+                    </a>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <div className="adminActions">
+            <button className="headerButton secondary" onClick={refreshModelRegistry} type="button">
+              Refresh registry
+            </button>
+            <button className="headerButton secondary" onClick={resetLocalRuntime} type="button">
+              Clear local runtime data
+            </button>
+          </div>
+          {modelProposals.length ? (
+            <div className="proposalList">
+              {modelProposals.map((proposal) => (
+                <article key={proposal.id} className="proposalCard">
+                  <div>
+                    <p className="panelLabel">Pending proposal</p>
+                    <strong>
+                      {proposal.proposed_set.openai_model.label} / {proposal.proposed_set.anthropic_model.label} / {" "}
+                      {proposal.proposed_set.google_model.label}
+                    </strong>
+                    <p>{proposal.rationale}</p>
+                  </div>
+                  <button
+                    className="headerButton"
+                    onClick={() => void approveModelProposal(proposal.id)}
+                    type="button"
+                  >
+                    Approve switch
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="microcopy">No pending model-set proposals.</p>
+          )}
+        </section>
+      ) : null}
+
+      <section className="tabbar">
+        <button
+          className={`tab ${activeTab === SAVED_INDEXES_TAB ? "active" : ""}`}
+          onClick={() => void activateSavedIndexes()}
+          type="button"
+        >
+          Saved Indexes
+        </button>
+        {openSessions.map((session) => (
+          <button
+            key={session.id}
+            className={`tab ${activeTab === session.id ? "active" : ""}`}
+            onClick={() => setActiveTab(session.id)}
+            type="button"
+          >
+            {shortTabTitle(session.title)}
+          </button>
+        ))}
       </section>
 
-      <section className="workspace">
-        <aside className="rail">
-          <div className="panel panel-dark">
-            <p className="panelLabel">Idea input</p>
-            <textarea
-              className="ideaInput"
-              value={ideaText}
-              onChange={(event) => setIdeaText(event.target.value)}
-              rows={7}
-            />
-            <div className="buttonRow">
-              <button className="button button-primary" disabled={isBusy} onClick={runHeavyMetalsFlow}>
-                {isBusy ? "Running flow..." : "Build heavy metals draft"}
+      {error ? <div className="errorBanner">{error}</div> : null}
+
+      {activeTab === SAVED_INDEXES_TAB ? (
+        <section className="savedIndexesLayout">
+          <aside className="savedRail sheetPanel">
+            <div className="sectionHeader compact">
+              <div>
+                <p className="panelLabel">Saved indexes</p>
+                <h2>Library</h2>
+              </div>
+              <button className="headerButton secondary" onClick={createNewIdeaTab} type="button">
+                New ideation tab
               </button>
             </div>
-            <p className="microcopy">
-              The draft remains paused until you explicitly approve it. Rebalance actions still
-              require the separate 3-step approval bundle.
-            </p>
-          </div>
-
-          <div className="panel">
-            <p className="panelLabel">Saved strategies</p>
-            <div className="strategyList">
-              {strategies.length === 0 ? (
-                <p className="emptyState">No saved strategies yet. Create the heavy-metals draft first.</p>
-              ) : null}
-              {strategies.map((strategy) => (
+            <div className="indexList">
+              {indexes.length === 0 ? <p className="emptyState">No saved indexes yet.</p> : null}
+              {indexes.map((index) => (
                 <button
-                  key={strategy.id}
-                  className={`strategyCard ${selectedId === strategy.id ? "selected" : ""}`}
-                  onClick={() => void loadStrategy(strategy.id)}
+                  key={index.id}
+                  className={`indexCard ${selectedIndexId === index.id ? "selected" : ""}`}
+                  onClick={() => void selectIndex(index.id)}
                   type="button"
                 >
-                  <span className="strategyName">{strategy.name}</span>
-                  <span className="strategyMeta">
-                    <span className={`pill pill-${strategy.status}`}>{strategy.status}</span>
-                    <span>{strategy.universe_size} names</span>
-                    <span>{formatPercent(strategy.last_backtest_cagr)} CAGR</span>
-                  </span>
+                  <strong>{index.name}</strong>
+                  <span>{index.holdings_count} holdings</span>
+                  <span>{formatPercent(index.latest_cagr)} 1Y</span>
                 </button>
               ))}
             </div>
-          </div>
-        </aside>
+          </aside>
 
-        <section className="canvas">
-          {error ? <div className="errorBanner">{error}</div> : null}
-
-          <div className="grid">
-            <section className="panel panel-wide">
-              <div className="sectionHeader">
-                <div>
-                  <p className="panelLabel">Strategy dossier</p>
-                  <h2>{selectedStrategy?.name ?? "No strategy selected"}</h2>
-                </div>
-                <div className="buttonRow">
-                  <button
-                    className="button button-secondary"
-                    disabled={!selectedStrategy || isBusy}
-                    onClick={refreshRebalancePreview}
-                  >
-                    Refresh rebalance preview
-                  </button>
-                  <button
-                    className="button button-primary"
-                    disabled={!selectedStrategy || selectedStrategy?.status !== "draft" || isBusy}
-                    onClick={approveDraft}
-                  >
-                    Approve draft
-                  </button>
-                </div>
-              </div>
-
-              {summary?.idea ? (
-                <div className="ideaSummary">
-                  <p>{summary.idea.raw_idea}</p>
-                  <div className="metricStrip">
-                    <span>clarity {Math.round(summary.idea.clarity_score * 100)}%</span>
-                    <span>{summary.strategy.weighting_method}</span>
-                    <span>{summary.idea.cadence_recommendation ?? "cadence pending"}</span>
-                    <span>{summary.strategy.rebalance_rule}</span>
-                  </div>
-                </div>
-              ) : (
-                <p className="emptyState">
-                  The dashboard will populate after you build or select a saved strategy.
-                </p>
-              )}
-
-              {summary?.proposal_bullets.length ? (
-                <ul className="bulletList">
-                  {summary.proposal_bullets.map((bullet) => (
-                    <li key={bullet}>{bullet}</li>
-                  ))}
-                </ul>
-              ) : null}
-
-              {proposal && proposal.strategy.id === selectedStrategy?.id ? (
-                <div className="callout">
-                  <strong>Latest proposal run captured in this browser session.</strong>
-                  <span>
-                    {proposal.audits.length} audit reports were attached to the draft proposal.
-                  </span>
-                </div>
-              ) : null}
-            </section>
-
-            <section className="panel">
-              <p className="panelLabel">Flow activity</p>
-              <ol className="activityList">
-                {activityLog.length === 0 ? <li>Waiting for a local run.</li> : null}
-                {activityLog.map((entry) => (
-                  <li key={entry}>{entry}</li>
-                ))}
-              </ol>
-            </section>
-
-            <section className="panel">
-              <p className="panelLabel">Backtest snapshot</p>
-              {summary?.latest_backtest ? (
-                <div className="metricGrid">
+          <section className="savedCanvas sheetPanel">
+            {indexDetail ? (
+              <>
+                <div className="sectionHeader">
                   <div>
-                    <span className="metricLabel">CAGR</span>
-                    <strong>{formatPercent(summary.latest_backtest.metrics.cagr)}</strong>
+                    <p className="panelLabel">Selected index</p>
+                    <h2>{indexDetail.name}</h2>
                   </div>
-                  <div>
-                    <span className="metricLabel">Volatility</span>
-                    <strong>{formatPercent(summary.latest_backtest.metrics.volatility)}</strong>
-                  </div>
-                  <div>
-                    <span className="metricLabel">Sharpe</span>
-                    <strong>{summary.latest_backtest.metrics.sharpe.toFixed(2)}</strong>
-                  </div>
-                  <div>
-                    <span className="metricLabel">Max drawdown</span>
-                    <strong>{formatPercent(summary.latest_backtest.metrics.max_drawdown)}</strong>
+                  <div className="statusStack">
+                    <span className={`pill pill-${indexDetail.status}`}>{indexDetail.status}</span>
+                    <span className="microcopy">{formatLabel(indexDetail.rebalance_cadence)}</span>
                   </div>
                 </div>
-              ) : (
-                <p className="emptyState">No backtest stored for this strategy yet.</p>
-              )}
-            </section>
 
-            <section className="panel">
-              <p className="panelLabel">Benchmarks</p>
-              {benchmarkRows.length ? (
-                <div className="benchmarkList">
-                  {benchmarkRows.map(([name, metrics]) => (
-                    <div key={name} className="benchmarkRow">
-                      <span>{formatLabel(name)}</span>
-                      <span>{formatPercent(metrics.cagr)} CAGR</span>
-                      <span>{formatPercent(metrics.max_drawdown)} max DD</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="emptyState">Run or load a backtest to compare against baselines.</p>
-              )}
-            </section>
-
-            <section className="panel panel-wide">
-              <p className="panelLabel">Candidate universe</p>
-              <div className="candidateGrid">
-                {summary?.strategy.universe.length ? (
-                  summary.strategy.universe.map((candidate) => (
-                    <article key={candidate.symbol} className="candidateCard">
-                      <div className="candidateTop">
-                        <div>
-                          <h3>{candidate.symbol}</h3>
-                          <p>{candidate.name}</p>
+                <div className="summaryGrid">
+                  <article className="summaryCard">
+                    <p className="panelLabel">Thesis</p>
+                    <p>{indexDetail.thesis_summary}</p>
+                  </article>
+                  <article className="summaryCard">
+                    <p className="panelLabel">Approval state</p>
+                    <p>{indexDetail.approval_status ?? "No active order bundle"}</p>
+                  </article>
+                  <article className="summaryCard full">
+                    <p className="panelLabel">Performance windows</p>
+                    <div className="timeframeGrid">
+                      {indexDetail.performance.map((row) => (
+                        <div key={row.timeframe} className="metricCell">
+                          <span>{row.timeframe}</span>
+                          <strong>{formatPercent(row.strategy_return)}</strong>
                         </div>
-                        <span className="scoreTag">{candidate.relevance_score.toFixed(2)}</span>
-                      </div>
-                      <p className="candidateMeta">
-                        {candidate.asset_type} on {candidate.exchange}
-                      </p>
-                      <p className="candidateBody">{candidate.rationale}</p>
-                      <div className="sourceList">
-                        {candidate.sources.slice(0, 3).map((source) => (
-                          <a key={source} href={source} rel="noreferrer" target="_blank">
-                            source
-                          </a>
-                        ))}
-                      </div>
-                    </article>
-                  ))
-                ) : (
-                  <p className="emptyState">No strategy universe loaded.</p>
-                )}
-              </div>
-            </section>
+                      ))}
+                    </div>
+                  </article>
+                </div>
 
-            <section className="panel">
-              <p className="panelLabel">Audit council</p>
-              <div className="auditList">
-                {summary?.audits.length ? (
-                  summary.audits.map((audit) => (
-                    <div key={`${audit.model}-${audit.content_hash}`} className="auditCard">
-                      <div className="auditTop">
-                        <span>{audit.model}</span>
-                        <span className={`pill pill-${audit.verdict === "pass" ? "active" : "paused"}`}>
-                          {audit.verdict}
+                <div className="detailGrid">
+                  <article className="summaryCard">
+                    <p className="panelLabel">Holdings</p>
+                    <div className="holdingsList">
+                      {indexDetail.holdings.map((holding) => (
+                        <div key={holding.symbol} className="holdingRow">
+                          <div>
+                            <strong>{holding.symbol}</strong>
+                            <span>{holding.name}</span>
+                          </div>
+                          <span>{formatPercent(holding.weight)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+
+                  <article className="summaryCard">
+                    <p className="panelLabel">Benchmark summary</p>
+                    <div className="benchmarkList">
+                      {indexDetail.performance.map((row) => (
+                        <div key={row.timeframe} className="benchmarkBlock">
+                          <strong>{row.timeframe}</strong>
+                          {performanceRow(row).map((item) => (
+                            <div key={`${row.timeframe}-${item.name}`} className="benchmarkRow">
+                              <span>{formatLabel(item.name)}</span>
+                              <span>{formatPercent(item.value)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                </div>
+
+                <div className="sectionHeader compact footerAction">
+                  <div>
+                    <p className="panelLabel">Next step</p>
+                    <p className="microcopy">Open a fresh ideation workbook from this saved index.</p>
+                  </div>
+                  <button className="headerButton" onClick={() => void openIndexAsIdea(indexDetail.id)} type="button">
+                    Open new ideation tab
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="emptyCanvas">
+                <p className="panelLabel">Saved indexes</p>
+                <h2>No saved index selected</h2>
+                <p>Select an index from the left or open a new ideation tab.</p>
+              </div>
+            )}
+          </section>
+        </section>
+      ) : (
+        <section className="ideationLayout">
+          <section className="sheetPanel workbookCanvas">
+            <div className="sectionHeader">
+              <div>
+                <p className="panelLabel">Ideation workbook</p>
+                <h2>{activeSession?.title ?? "Loading..."}</h2>
+              </div>
+              <div className="statusStack">
+                <span className={`pill pill-${activeSession?.status ?? "neutral"}`}>
+                  {activeSession ? sessionStatusLabel(activeSession.status) : "loading"}
+                </span>
+                <button className="headerButton secondary" onClick={convertSession} type="button">
+                  Convert to saved index
+                </button>
+              </div>
+            </div>
+
+            <div className="sessionMeta">
+              <span>{activeSession?.raw_thesis || "Start the conversation to define the thesis."}</span>
+              <span>{councilCount(activeSession?.council_summary ?? null)}</span>
+            </div>
+
+            <div className="tileGrid">
+              {activeSession?.decision_tiles.map((tile) => (
+                <article key={tile.key} className={`tileCard tile-${tile.status}`}>
+                  <div className="tileHeader">
+                    <p className="panelLabel">{tile.title}</p>
+                    <span className={`pill pill-${tile.status}`}>{formatLabel(tile.status)}</span>
+                  </div>
+                  <p>{tile.summary}</p>
+                  {tile.bullets.length ? (
+                    <ul className="bulletList compact">
+                      {tile.bullets.map((bullet) => (
+                        <li key={bullet}>{bullet}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+
+            <div className="councilPanel">
+              <div className="sectionHeader compact">
+                <div>
+                  <p className="panelLabel">Council summary</p>
+                  <p>{activeSession?.council_summary?.headline ?? "Waiting for your first message."}</p>
+                </div>
+                <button
+                  className="headerButton secondary"
+                  onClick={() =>
+                    setExpandedCouncilTab((current) => (current === activeSessionId ? null : activeSessionId))
+                  }
+                  type="button"
+                >
+                  {expandedCouncilTab === activeSessionId ? "Hide details" : "Show details"}
+                </button>
+              </div>
+              {expandedCouncilTab === activeSessionId && activeSession?.council_summary ? (
+                <div className="auditList">
+                  {activeSession.council_summary.reports.map((report) => (
+                    <article key={`${report.model}-${report.content_hash}`} className="auditCard">
+                      <div className="auditHeader">
+                        <strong>{report.model}</strong>
+                        <span className={`pill pill-${report.verdict === "pass" ? "resolved" : "blocked_by_council"}`}>
+                          {report.verdict}
                         </span>
                       </div>
-                      <p>{audit.stage}</p>
+                      <p>{report.stage}</p>
                       <ul className="bulletList compact">
-                        {audit.reasons.map((reason) => (
+                        {report.reasons.map((reason) => (
                           <li key={reason}>{reason}</li>
                         ))}
                       </ul>
-                    </div>
-                  ))
-                ) : (
-                  <p className="emptyState">No audit reports stored.</p>
-                )}
-              </div>
-            </section>
-
-            <section className="panel">
-              <p className="panelLabel">Approval bundle</p>
-              {summary?.latest_bundle ? (
-                <>
-                  <div className="approvalSteps">
-                    <span className={summary.latest_bundle.step1_at ? "done" : ""}>1. password + TOTP</span>
-                    <span className={summary.latest_bundle.step2_at ? "done" : ""}>2. out-of-band</span>
-                    <span className={summary.latest_bundle.step3_at ? "done" : ""}>3. final cooldown confirm</span>
-                  </div>
-                  <div className="metricStrip">
-                    <span>{summary.latest_bundle.action}</span>
-                    <span>{summary.latest_bundle.status}</span>
-                    <span>{summary.latest_bundle.cooldown_seconds}s cooldown</span>
-                  </div>
-                  <div className="allocationList">
-                    {Object.entries(summary.latest_bundle.target_allocations).map(([symbol, weight]) => (
-                      <div key={symbol} className="allocationRow">
-                        <span>{symbol}</span>
-                        <strong>{formatPercent(weight)}</strong>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <p className="emptyState">No approval bundle exists yet.</p>
-              )}
-            </section>
-
-            <section className="panel">
-              <p className="panelLabel">Paper order preview</p>
-              {summary?.latest_order_preview?.orders.length ? (
-                <div className="allocationList">
-                  {summary.latest_order_preview.orders.map((order) => (
-                    <div key={order.symbol} className="allocationRow">
-                      <span>{order.symbol}</span>
-                      <strong>{formatPercent(order.target_weight)}</strong>
-                    </div>
+                    </article>
                   ))}
                 </div>
-              ) : (
-                <p className="emptyState">Generate a rebalance preview to see paper orders.</p>
-              )}
-            </section>
+              ) : null}
+            </div>
+          </section>
 
-            <section className="panel panel-wide">
-              <p className="panelLabel">Deterministic artifact</p>
-              {summary?.artifact ? (
-                <pre className="codeBlock">{summary.artifact.source_code}</pre>
-              ) : (
-                <p className="emptyState">No compiled strategy artifact available.</p>
-              )}
-            </section>
-          </div>
+          <aside className="chatRail sheetPanel">
+            <div className="sectionHeader compact">
+              <div>
+                <p className="panelLabel">Conversation</p>
+                <h3>Chat-driven ideation</h3>
+              </div>
+              <span className="microcopy">Pinned right rail</span>
+            </div>
+
+            <div className="messageList">
+              {activeMessages.map((message: IdeationMessage) => (
+                <article key={message.id} className={`messageBubble role-${message.role}`}>
+                  <span className="messageRole">{message.role}</span>
+                  <p>{message.content}</p>
+                </article>
+              ))}
+            </div>
+
+            <form
+              className="composer"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void sendMessage();
+              }}
+            >
+              <textarea
+                value={messageDraft}
+                onChange={(event) => setMessageDraft(event.target.value)}
+                placeholder="Describe the thesis, constraints, benchmarks, weighting, or rebalance logic."
+                rows={6}
+              />
+              <div className="composerActions">
+                <span className="microcopy">The workbook updates after each message.</span>
+                <button className="headerButton" disabled={isBusy || !messageDraft.trim()} type="submit">
+                  Send
+                </button>
+              </div>
+            </form>
+          </aside>
         </section>
-      </section>
+      )}
     </main>
   );
 }

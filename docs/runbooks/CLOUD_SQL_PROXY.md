@@ -4,7 +4,7 @@
 
 Local development must connect to Postgres through Cloud SQL Auth Proxy, not by directly opening the Cloud SQL public endpoint to the current network.
 
-This is the approved local access path for `agent-etf`.
+This is the approved local access path for `Agentic Indexing`.
 
 ## Why This Exists
 
