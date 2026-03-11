@@ -20,6 +20,7 @@
     { "id": "send-message", "label": "Send chat prompt and update workbook" },
     { "id": "toggle-council", "label": "Expand council details" },
     { "id": "convert-session", "label": "Convert ideation session to saved index" },
+    { "id": "approval-chain", "label": "Prepare rebalance bundle and complete approval chain" },
     { "id": "reopen-ideation", "label": "Open new ideation from saved index" },
     { "id": "model-admin", "label": "Refresh and approve model registry proposal" },
     { "id": "reset-runtime", "label": "Clear local runtime data" }
@@ -28,6 +29,7 @@
     "workbook shell is interactive",
     "chat updates tile state",
     "index conversion populates saved indexes",
+    "approval bundle and order preview work in the saved index pane",
     "model admin refreshes deterministically in test mode",
     "runtime reset returns to blank state"
   ]

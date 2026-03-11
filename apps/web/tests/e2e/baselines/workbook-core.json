@@ -190,6 +190,20 @@
       "error": "{\"detail\":\"'Index not found'\"}",
       "isBusy": false,
       "session": null
+    },
+    "approval-chain": {
+      "route": "saved-indexes",
+      "activeTab": "saved-indexes",
+      "openTabs": [
+        "Build a quality-focused industrial innovation index using liquid ETFs an"
+      ],
+      "savedIndexCount": 1,
+      "selectedIndexName": "Build a quality-focused industrial innovation index using liquid ETFs an",
+      "showModelAdmin": false,
+      "pendingModelProposalCount": 0,
+      "error": null,
+      "isBusy": false,
+      "session": null
     }
   }
 }

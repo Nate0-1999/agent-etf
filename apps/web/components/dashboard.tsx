@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type {
+  ApprovalBundleResponse,
   ApprovedModelSet,
   ConvertIdeationSessionResponse,
   CouncilSummary,
@@ -15,9 +16,11 @@ import type {
   IndexDetail,
   IndexListResponse,
   IndexSummary,
+  ManualActionResponse,
   ModelProposalListResponse,
   ModelRefreshResponse,
   PendingModelSetProposal,
+  StrategySummaryResponse,
   TimeframePerformance,
 } from "../lib/types";
 import {
@@ -124,6 +127,10 @@ function councilCount(summary: CouncilSummary | null): string {
   return `${summary.reports.length} checks`;
 }
 
+function approvalTokenKey(step: 1 | 2 | 3): "step1" | "step2" | "step3" {
+  return step === 1 ? "step1" : step === 2 ? "step2" : "step3";
+}
+
 export function Dashboard() {
   const [sessions, setSessions] = useState<IdeationSession[]>([]);
   const [sessionDetails, setSessionDetails] = useState<SessionDetailMap>({});
@@ -132,11 +139,17 @@ export function Dashboard() {
   const [indexes, setIndexes] = useState<IndexSummary[]>([]);
   const [selectedIndexId, setSelectedIndexId] = useState<string | null>(null);
   const [indexDetail, setIndexDetail] = useState<IndexDetail | null>(null);
+  const [strategySummary, setStrategySummary] = useState<StrategySummaryResponse | null>(null);
   const [currentModels, setCurrentModels] = useState<ApprovedModelSet | null>(null);
   const [modelProposals, setModelProposals] = useState<PendingModelSetProposal[]>([]);
   const [showModelAdmin, setShowModelAdmin] = useState(false);
   const [expandedCouncilTab, setExpandedCouncilTab] = useState<string | null>(null);
   const [messageDraft, setMessageDraft] = useState("");
+  const [approvalTokens, setApprovalTokens] = useState({
+    step1: "operator-password-totp",
+    step2: "out-of-band-confirmed",
+    step3: "final-reconfirm",
+  });
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
@@ -183,8 +196,11 @@ export function Dashboard() {
     if (nextSelected) {
       const detail = await apiRequest<IndexDetail>(`/indexes/${nextSelected}`);
       setIndexDetail(detail);
+      const summary = await apiRequest<StrategySummaryResponse>(`/strategies/${detail.strategy_id}`);
+      setStrategySummary(summary);
     } else {
       setIndexDetail(null);
+      setStrategySummary(null);
     }
   }, [selectedIndexId]);
 
@@ -293,6 +309,8 @@ export function Dashboard() {
     if (selectedIndexId) {
       const detail = await apiRequest<IndexDetail>(`/indexes/${selectedIndexId}`);
       setIndexDetail(detail);
+      const summary = await apiRequest<StrategySummaryResponse>(`/strategies/${detail.strategy_id}`);
+      setStrategySummary(summary);
     }
   }, [selectedIndexId]);
 
@@ -381,10 +399,22 @@ export function Dashboard() {
     try {
       const detail = await apiRequest<IndexDetail>(`/indexes/${indexId}`);
       setIndexDetail(detail);
+      const summary = await apiRequest<StrategySummaryResponse>(`/strategies/${detail.strategy_id}`);
+      setStrategySummary(summary);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to load index");
     }
   }, []);
+
+  const refreshSelectedStrategySummary = useCallback(async (detail?: IndexDetail | null) => {
+    const target = detail ?? indexDetail;
+    if (!target) {
+      setStrategySummary(null);
+      return;
+    }
+    const summary = await apiRequest<StrategySummaryResponse>(`/strategies/${target.strategy_id}`);
+    setStrategySummary(summary);
+  }, [indexDetail]);
 
   const refreshModelRegistry = useCallback(async () => {
     setIsBusy(true);
@@ -416,6 +446,54 @@ export function Dashboard() {
     }
   }, [refreshModels]);
 
+  const prepareApprovalBundle = useCallback(async (action: "rebalance" | "update") => {
+    if (!indexDetail) {
+      return;
+    }
+    setIsBusy(true);
+    setError(null);
+    try {
+      await apiRequest<ManualActionResponse>(
+        `/strategies/${indexDetail.strategy_id}/manual-${action}`,
+        { method: "POST" },
+      );
+      await refreshSelectedStrategySummary(indexDetail);
+      await refreshIndexes(indexDetail.id);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : `Failed to prepare ${action}`);
+    } finally {
+      setIsBusy(false);
+    }
+  }, [indexDetail, refreshIndexes, refreshSelectedStrategySummary]);
+
+  const submitApprovalStep = useCallback(async (step: 1 | 2 | 3) => {
+    const bundle = strategySummary?.latest_bundle;
+    if (!bundle) {
+      return;
+    }
+    const tokenKey = approvalTokenKey(step);
+    setIsBusy(true);
+    setError(null);
+    try {
+      await apiRequest<ApprovalBundleResponse>(`/approval-bundles/${bundle.id}/step-${step}`, {
+        method: "POST",
+        body: JSON.stringify({ token: approvalTokens[tokenKey] }),
+      });
+      await refreshSelectedStrategySummary();
+      await refreshIndexes(indexDetail?.id);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : `Failed approval step ${step}`);
+    } finally {
+      setIsBusy(false);
+    }
+  }, [
+    approvalTokens,
+    indexDetail?.id,
+    refreshIndexes,
+    refreshSelectedStrategySummary,
+    strategySummary?.latest_bundle,
+  ]);
+
   const resetLocalRuntime = useCallback(async () => {
     setIsBusy(true);
     setError(null);
@@ -426,6 +504,7 @@ export function Dashboard() {
       setActiveTab(SAVED_INDEXES_TAB);
       setSelectedIndexId(null);
       setIndexDetail(null);
+      setStrategySummary(null);
       await refreshAll();
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to clear local runtime data");
@@ -618,7 +697,11 @@ export function Dashboard() {
                   </article>
                   <article className="summaryCard">
                     <p className="panelLabel">Approval state</p>
-                    <p>{indexDetail.approval_status ?? "No active order bundle"}</p>
+                    <p data-testid="approval-status-label">
+                      {strategySummary?.latest_bundle?.status ??
+                        indexDetail.approval_status ??
+                        "No active order bundle"}
+                    </p>
                   </article>
                   <article className="summaryCard full">
                     <p className="panelLabel">Performance windows</p>
@@ -666,6 +749,118 @@ export function Dashboard() {
                     </div>
                   </article>
                 </div>
+
+                <article className="summaryCard full" data-testid="approval-workflow-panel">
+                  <div className="sectionHeader compact">
+                    <div>
+                      <p className="panelLabel">Execution approval</p>
+                      <p className="microcopy">
+                        Build a rebalance or update bundle, inspect the preview, then complete the
+                        three-step approval chain.
+                      </p>
+                    </div>
+                    <div className="headerControls">
+                      <button
+                        className="headerButton secondary"
+                        data-testid="prepare-update-bundle-button"
+                        onClick={() => void prepareApprovalBundle("update")}
+                        type="button"
+                      >
+                        Prepare update
+                      </button>
+                      <button
+                        className="headerButton"
+                        data-testid="prepare-rebalance-bundle-button"
+                        onClick={() => void prepareApprovalBundle("rebalance")}
+                        type="button"
+                      >
+                        Prepare rebalance
+                      </button>
+                    </div>
+                  </div>
+
+                  {strategySummary?.latest_bundle ? (
+                    <>
+                      <div className="summaryGrid">
+                        <article className="summaryCard">
+                          <p className="panelLabel">Bundle</p>
+                          <p className="microcopy" data-testid="approval-bundle-id">
+                            {strategySummary.latest_bundle.id}
+                          </p>
+                          <span className={`pill pill-${strategySummary.latest_bundle.status}`}>
+                            {strategySummary.latest_bundle.status}
+                          </span>
+                        </article>
+                        <article className="summaryCard">
+                          <p className="panelLabel">Action</p>
+                          <p data-testid="approval-bundle-action">
+                            {strategySummary.latest_bundle.action}
+                          </p>
+                          <span className="microcopy">
+                            cooldown {strategySummary.latest_bundle.cooldown_seconds}s
+                          </span>
+                        </article>
+                      </div>
+
+                      <div className="detailGrid">
+                        {([1, 2, 3] as const).map((step) => (
+                          <article
+                            key={step}
+                            className="summaryCard"
+                            data-testid={`approval-step-card-${step}`}
+                          >
+                            <p className="panelLabel">Step {step}</p>
+                            <input
+                              data-testid={`approval-step-input-${step}`}
+                              value={approvalTokens[approvalTokenKey(step)]}
+                              onChange={(event) =>
+                                setApprovalTokens((current) => ({
+                                  ...current,
+                                  [approvalTokenKey(step)]: event.target.value,
+                                }))
+                              }
+                            />
+                            <button
+                              className="headerButton secondary"
+                              data-testid={`approval-step-button-${step}`}
+                              onClick={() => void submitApprovalStep(step as 1 | 2 | 3)}
+                              type="button"
+                            >
+                              Complete step {step}
+                            </button>
+                          </article>
+                        ))}
+                      </div>
+
+                      <article className="summaryCard" data-testid="order-preview-panel">
+                        <p className="panelLabel">Order preview</p>
+                        {strategySummary.latest_order_preview ? (
+                          <div className="holdingsList">
+                            {strategySummary.latest_order_preview.orders.map((order) => (
+                              <div
+                                key={`${order.symbol}-${order.action}`}
+                                className="holdingRow"
+                                data-testid={`order-preview-item-${order.symbol}`}
+                              >
+                                <div>
+                                  <strong>{order.symbol}</strong>
+                                  <span>{order.action}</span>
+                                </div>
+                                <span>{formatPercent(order.target_weight)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p>No preview available yet.</p>
+                        )}
+                      </article>
+                    </>
+                  ) : (
+                    <p className="microcopy" data-testid="approval-workflow-empty">
+                      No active approval bundle yet.
+                    </p>
+                  )}
+                </article>
 
                 <div className="sectionHeader compact footerAction">
                   <div>

@@ -57,6 +57,20 @@ test.describe("@core workbook verification", () => {
         "saved index detail visible",
       ], { screenshot: true });
 
+      await page.getByTestId("prepare-rebalance-bundle-button").click();
+      await expect(page.getByTestId("approval-workflow-panel")).toContainText("pending");
+      await expect(page.getByTestId("order-preview-panel")).toContainText("rebalance");
+      await page.getByTestId("approval-step-button-1").click();
+      await page.getByTestId("approval-step-button-2").click();
+      await page.getByTestId("approval-step-button-3").click();
+      await expect(page.getByTestId("approval-status-label")).toContainText("approved");
+      await recorder.captureStep(
+        "approval-chain",
+        "Prepare rebalance bundle and complete approval chain",
+        ["rebalance bundle created", "order preview visible", "approval chain completed"],
+        { screenshot: true },
+      );
+
       await page.getByTestId("open-new-ideation-from-index-button").click();
       await expect(page.getByTestId("chat-rail")).toBeVisible();
       await recorder.captureStep("reopen-ideation", "Open new ideation from saved index", [

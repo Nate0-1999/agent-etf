@@ -1,4 +1,5 @@
 export type StrategyStatus = "draft" | "active" | "paused";
+export type ApprovalAction = "create" | "rebalance" | "update";
 export type ApprovalStatus =
   | "pending"
   | "step1_complete"
@@ -89,6 +90,32 @@ export type BacktestMetrics = {
   years_of_history: number;
 };
 
+export type OrderPreviewItem = {
+  symbol: string;
+  target_weight: number;
+  action: string;
+};
+
+export type OrderPreviewResponse = {
+  strategy_id: string;
+  action: string;
+  orders: OrderPreviewItem[];
+};
+
+export type ApprovalBundle = {
+  id: string;
+  strategy_id: string;
+  action: ApprovalAction;
+  intent_hash: string;
+  target_allocations: Record<string, number>;
+  cooldown_seconds: number;
+  step1_at: string | null;
+  step2_at: string | null;
+  step3_at: string | null;
+  status: ApprovalStatus;
+  created_at: string;
+};
+
 export type TimeframePerformance = {
   timeframe: string;
   strategy_return: number;
@@ -175,6 +202,32 @@ export type ModelRefreshResponse = {
   catalog: ModelCatalogEntry[];
   current: ApprovedModelSet;
   proposal: PendingModelSetProposal | null;
+};
+
+export type ManualActionResponse = {
+  strategy_id: string;
+  action: ApprovalAction;
+  loops_attempted: number;
+  escalated: boolean;
+  escalation_summary: string | null;
+  bundle: ApprovalBundle;
+};
+
+export type ApprovalBundleResponse = {
+  bundle: ApprovalBundle;
+};
+
+export type StrategySummaryResponse = {
+  strategy: {
+    id: string;
+    name: string;
+    status: StrategyStatus;
+    weighting_method: string;
+    rebalance_rule: string;
+    update_rule: string;
+  };
+  latest_bundle: ApprovalBundle | null;
+  latest_order_preview: OrderPreviewResponse | null;
 };
 
 export type DevResetResponse = {

@@ -29,6 +29,7 @@ export default defineConfig({
         ...process.env,
         AGENTIC_ENV: "development",
         AGENTIC_TEST_MODE: "1",
+        APPROVAL_STEP3_COOLDOWN_SECONDS: "0",
         DATABASE_URL: "",
         OPENROUTER_API_KEY: "",
         EXA_API_KEY: "",
