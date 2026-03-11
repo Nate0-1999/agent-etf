@@ -109,6 +109,32 @@ export async function installBrowserProbe(page: Page, testRunId: string): Promis
   }, { providedTestRunId: testRunId });
 }
 
+async function requestWithRetry(
+  page: Page,
+  method: "GET" | "POST",
+  path: string,
+  options?: { data?: unknown; timeoutMs?: number; retries?: number },
+): Promise<Awaited<ReturnType<Page["request"]["get"]>>> {
+  const retries = options?.retries ?? 10;
+  const timeoutMs = options?.timeoutMs ?? 1500;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    try {
+      if (method === "GET") {
+        return await page.request.get(`${API_BASE}${path}`, { timeout: timeoutMs });
+      }
+      return await page.request.post(`${API_BASE}${path}`, {
+        data: options?.data,
+        timeout: timeoutMs,
+      });
+    } catch (error) {
+      lastError = error;
+      await page.waitForTimeout(250);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`Request failed for ${path}`);
+}
+
 export function makeTestRunId(spec: ScenarioSpec, projectName: string): string {
   const safeProject = projectName.replace(/[^a-z0-9-]+/gi, "-").toLowerCase();
   return `${spec.id}-${safeProject}-${Date.now()}`;
@@ -235,8 +261,8 @@ export class ScenarioRecorder {
   }
 
   async resetAndSeed(seed: string): Promise<void> {
-    await this.page.request.post(`${API_BASE}/dev/reset`);
-    await this.page.request.post(`${API_BASE}/dev/seed`, { data: { scenario: seed } });
+    await requestWithRetry(this.page, "POST", "/dev/reset");
+    await requestWithRetry(this.page, "POST", "/dev/seed", { data: { scenario: seed } });
   }
 
   async captureStep(
@@ -247,7 +273,12 @@ export class ScenarioRecorder {
   ): Promise<VerificationState> {
     await waitForUiSettle(this.page);
     const snapshot = await snapshotPage(this.page);
-    const backendResponse = await this.page.request.get(`${API_BASE}/dev/events?test_run_id=${this.testRunId}`);
+    const backendResponse = await requestWithRetry(
+      this.page,
+      "GET",
+      `/dev/events?test_run_id=${this.testRunId}`,
+      { timeoutMs: 3000, retries: 5 },
+    );
     const backendBody = (await backendResponse.json()) as { events?: Array<Record<string, unknown>> };
     const backendEvents = backendBody.events ?? [];
 

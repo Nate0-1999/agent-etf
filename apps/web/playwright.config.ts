@@ -5,7 +5,6 @@ const rootDir = path.resolve(__dirname, "..", "..");
 const pythonBin = process.env.PYTHON_BIN ?? ".venv/bin/python";
 const apiPort = process.env.PLAYWRIGHT_API_PORT ?? "8100";
 const webPort = process.env.PLAYWRIGHT_WEB_PORT ?? "3100";
-const apiBase = `http://127.0.0.1:${apiPort}`;
 const webBase = `http://127.0.0.1:${webPort}`;
 const stackCommand = `${pythonBin} scripts/run_agentic_stack.py verification --api-port ${apiPort} --web-port ${webPort} --host 127.0.0.1`;
 
@@ -25,7 +24,7 @@ export default defineConfig({
     {
       command: stackCommand,
       cwd: rootDir,
-      url: webBase,
+      url: `${webBase}/api/runtime/status`,
       reuseExistingServer: false,
       env: {
         ...process.env,
