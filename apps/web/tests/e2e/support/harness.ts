@@ -115,8 +115,8 @@ async function requestWithRetry(
   path: string,
   options?: { data?: unknown; timeoutMs?: number; retries?: number },
 ): Promise<Awaited<ReturnType<Page["request"]["get"]>>> {
-  const retries = options?.retries ?? 10;
-  const timeoutMs = options?.timeoutMs ?? 1500;
+  const retries = options?.retries ?? 12;
+  const timeoutMs = options?.timeoutMs ?? 3000;
   let lastError: unknown;
   for (let attempt = 0; attempt < retries; attempt += 1) {
     try {

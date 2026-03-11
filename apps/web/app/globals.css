@@ -371,7 +371,7 @@ a {
 
 .chatRail {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
 }
 
 .messageList {
@@ -400,6 +400,16 @@ a {
   display: grid;
   gap: 12px;
   margin-top: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(29, 111, 66, 0.08), rgba(255, 255, 255, 0.96)),
+    var(--sheet-strong);
+  box-shadow: 0 10px 24px rgba(27, 44, 65, 0.06);
 }
 
 .composer textarea {
@@ -410,6 +420,32 @@ a {
   resize: vertical;
   background: var(--sheet-strong);
   color: var(--page-ink);
+}
+
+.loadingBanner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid #d7e4da;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f5fbf6 0%, #ebf4ee 100%);
+}
+
+.loadingBanner strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(29, 111, 66, 0.18);
+  border-top-color: var(--excel-green);
+  border-radius: 999px;
+  animation: spin 0.85s linear infinite;
 }
 
 .bulletList {
@@ -527,5 +563,18 @@ a {
   .modelBadge {
     min-width: 0;
     width: 100%;
+  }
+
+  .composer {
+    position: static;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }

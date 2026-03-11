@@ -34,6 +34,13 @@ const API_BASE = "/api";
 const SAVED_INDEXES_TAB = "saved-indexes";
 const OPEN_TABS_KEY = "agentic-indexing.open-tabs";
 const ACTIVE_TAB_KEY = "agentic-indexing.active-tab";
+const LOADING_JOKES = [
+  "Running due diligence. No meme stocks were harmed in this process.",
+  "Sharpening pencils and flattening fees.",
+  "Waiting for the market to stop naming products after buzzwords.",
+  "Calculating alpha, avoiding astrology.",
+  "Refreshing signals. Still cheaper than a Bloomberg terminal.",
+];
 
 type SessionDetailMap = Record<string, IdeationSessionDetailResponse>;
 
@@ -180,6 +187,7 @@ export function Dashboard() {
     step2: "out-of-band-confirmed",
     step3: "final-reconfirm",
   });
+  const [loadingJokeIndex, setLoadingJokeIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
@@ -272,6 +280,17 @@ export function Dashboard() {
   useEffect(() => {
     persistWorkspace(openSessionIds, activeTab);
   }, [activeTab, openSessionIds]);
+
+  useEffect(() => {
+    if (!isBusy) {
+      setLoadingJokeIndex(0);
+      return;
+    }
+    const interval = window.setInterval(() => {
+      setLoadingJokeIndex((current) => (current + 1) % LOADING_JOKES.length);
+    }, 1800);
+    return () => window.clearInterval(interval);
+  }, [isBusy]);
 
   useEffect(() => {
     if (activeSessionId && !sessionDetails[activeSessionId]) {
@@ -1080,15 +1099,6 @@ export function Dashboard() {
               <span className="microcopy">Pinned right rail</span>
             </div>
 
-            <div className="messageList" data-testid="message-list">
-              {activeMessages.map((message: IdeationMessage) => (
-                <article key={message.id} className={`messageBubble role-${message.role}`}>
-                  <span className="messageRole">{message.role}</span>
-                  <p>{message.content}</p>
-                </article>
-              ))}
-            </div>
-
             <form
               className="composer"
               data-testid="message-composer"
@@ -1116,6 +1126,25 @@ export function Dashboard() {
                 </button>
               </div>
             </form>
+
+            {isBusy ? (
+              <div className="loadingBanner" data-testid="loading-banner">
+                <span className="spinner" aria-hidden="true" />
+                <div>
+                  <strong>Working through the workbook...</strong>
+                  <p>{LOADING_JOKES[loadingJokeIndex]}</p>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="messageList" data-testid="message-list">
+              {activeMessages.map((message: IdeationMessage) => (
+                <article key={message.id} className={`messageBubble role-${message.role}`}>
+                  <span className="messageRole">{message.role}</span>
+                  <p>{message.content}</p>
+                </article>
+              ))}
+            </div>
           </aside>
         </section>
       )}
