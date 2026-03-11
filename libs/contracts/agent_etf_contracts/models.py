@@ -415,3 +415,30 @@ class ModelRefreshResponse(BaseModel):
 class DevResetResponse(BaseModel):
     cleared: bool
     message: str
+
+
+class DevSeedRequest(BaseModel):
+    scenario: str = "blank"
+
+
+class DevSeedResponse(BaseModel):
+    scenario: str
+    created_session_id: str | None = None
+    created_index_id: str | None = None
+    message: str
+
+
+class DevEvent(BaseModel):
+    id: str
+    category: str
+    action: str
+    request_id: str | None = None
+    test_run_id: str | None = None
+    route: str | None = None
+    status_code: int | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class DevEventListResponse(BaseModel):
+    events: list[DevEvent] = Field(default_factory=list)

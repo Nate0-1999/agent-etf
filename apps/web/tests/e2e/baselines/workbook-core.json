@@ -1,0 +1,195 @@
+{
+  "scenario": "workbook-core",
+  "checkpoints": {
+    "initial-load": {
+      "route": "saved-indexes",
+      "activeTab": "saved-indexes",
+      "openTabs": [],
+      "savedIndexCount": 0,
+      "selectedIndexName": null,
+      "showModelAdmin": false,
+      "pendingModelProposalCount": 0,
+      "error": null,
+      "isBusy": false,
+      "session": null
+    },
+    "create-idea-tab": {
+      "route": "ideation",
+      "activeTab": "ideation-session",
+      "openTabs": [
+        "New Idea"
+      ],
+      "savedIndexCount": 0,
+      "selectedIndexName": null,
+      "showModelAdmin": false,
+      "pendingModelProposalCount": 0,
+      "error": null,
+      "isBusy": false,
+      "session": {
+        "title": "New Idea",
+        "status": "drafting",
+        "messageCount": 1,
+        "councilHeadline": "Awaiting your thesis to start the workbook.",
+        "tileStatuses": {
+          "thesis": "empty",
+          "exposure_map": "empty",
+          "candidate_vehicles": "empty",
+          "weighting": "empty",
+          "rebalance_maintenance": "empty",
+          "risk_constraints": "empty",
+          "benchmarks": "empty",
+          "approval_rules": "empty",
+          "open_questions": "empty"
+        }
+      }
+    },
+    "send-message": {
+      "route": "ideation",
+      "activeTab": "ideation-session",
+      "openTabs": [
+        "Build a quality-focused industrial innovation index using liquid ETFs an"
+      ],
+      "savedIndexCount": 0,
+      "selectedIndexName": null,
+      "showModelAdmin": false,
+      "pendingModelProposalCount": 0,
+      "error": null,
+      "isBusy": false,
+      "session": {
+        "title": "Build a quality-focused industrial innovation index using liquid ETFs an",
+        "status": "ready_to_convert",
+        "messageCount": 3,
+        "councilHeadline": "The council is aligned. 7 candidate vehicles are currently in scope.",
+        "tileStatuses": {
+          "thesis": "resolved",
+          "exposure_map": "resolved",
+          "candidate_vehicles": "resolved",
+          "weighting": "resolved",
+          "rebalance_maintenance": "resolved",
+          "risk_constraints": "resolved",
+          "benchmarks": "resolved",
+          "approval_rules": "resolved",
+          "open_questions": "resolved"
+        }
+      }
+    },
+    "toggle-council": {
+      "route": "ideation",
+      "activeTab": "ideation-session",
+      "openTabs": [
+        "Build a quality-focused industrial innovation index using liquid ETFs an"
+      ],
+      "savedIndexCount": 0,
+      "selectedIndexName": null,
+      "showModelAdmin": false,
+      "pendingModelProposalCount": 0,
+      "error": null,
+      "isBusy": false,
+      "session": {
+        "title": "Build a quality-focused industrial innovation index using liquid ETFs an",
+        "status": "ready_to_convert",
+        "messageCount": 3,
+        "councilHeadline": "The council is aligned. 7 candidate vehicles are currently in scope.",
+        "tileStatuses": {
+          "thesis": "resolved",
+          "exposure_map": "resolved",
+          "candidate_vehicles": "resolved",
+          "weighting": "resolved",
+          "rebalance_maintenance": "resolved",
+          "risk_constraints": "resolved",
+          "benchmarks": "resolved",
+          "approval_rules": "resolved",
+          "open_questions": "resolved"
+        }
+      }
+    },
+    "convert-session": {
+      "route": "saved-indexes",
+      "activeTab": "saved-indexes",
+      "openTabs": [
+        "Build a quality-focused industrial innovation index using liquid ETFs an"
+      ],
+      "savedIndexCount": 1,
+      "selectedIndexName": "Build a quality-focused industrial innovation index using liquid ETFs an",
+      "showModelAdmin": false,
+      "pendingModelProposalCount": 0,
+      "error": null,
+      "isBusy": false,
+      "session": null
+    },
+    "reopen-ideation": {
+      "route": "ideation",
+      "activeTab": "ideation-session",
+      "openTabs": [
+        "Build a quality-focused industrial innovation index using liquid ETFs an",
+        "Build a quality-focused industrial innovation index using liquid ETFs an"
+      ],
+      "savedIndexCount": 1,
+      "selectedIndexName": "Build a quality-focused industrial innovation index using liquid ETFs an",
+      "showModelAdmin": false,
+      "pendingModelProposalCount": 0,
+      "error": null,
+      "isBusy": false,
+      "session": {
+        "title": "Build a quality-focused industrial innovation index using liquid ETFs an",
+        "status": "ready_to_convert",
+        "messageCount": 3,
+        "councilHeadline": "The council is aligned. 7 candidate vehicles are currently in scope.",
+        "tileStatuses": {
+          "thesis": "resolved",
+          "exposure_map": "resolved",
+          "candidate_vehicles": "resolved",
+          "weighting": "resolved",
+          "rebalance_maintenance": "resolved",
+          "risk_constraints": "resolved",
+          "benchmarks": "resolved",
+          "approval_rules": "resolved",
+          "open_questions": "resolved"
+        }
+      }
+    },
+    "model-admin": {
+      "route": "ideation",
+      "activeTab": "ideation-session",
+      "openTabs": [
+        "Build a quality-focused industrial innovation index using liquid ETFs an",
+        "Build a quality-focused industrial innovation index using liquid ETFs an"
+      ],
+      "savedIndexCount": 1,
+      "selectedIndexName": "Build a quality-focused industrial innovation index using liquid ETFs an",
+      "showModelAdmin": true,
+      "pendingModelProposalCount": 0,
+      "error": null,
+      "isBusy": false,
+      "session": {
+        "title": "Build a quality-focused industrial innovation index using liquid ETFs an",
+        "status": "ready_to_convert",
+        "messageCount": 3,
+        "councilHeadline": "The council is aligned. 7 candidate vehicles are currently in scope.",
+        "tileStatuses": {
+          "thesis": "resolved",
+          "exposure_map": "resolved",
+          "candidate_vehicles": "resolved",
+          "weighting": "resolved",
+          "rebalance_maintenance": "resolved",
+          "risk_constraints": "resolved",
+          "benchmarks": "resolved",
+          "approval_rules": "resolved",
+          "open_questions": "resolved"
+        }
+      }
+    },
+    "reset-runtime": {
+      "route": "saved-indexes",
+      "activeTab": "saved-indexes",
+      "openTabs": [],
+      "savedIndexCount": 0,
+      "selectedIndexName": null,
+      "showModelAdmin": true,
+      "pendingModelProposalCount": 0,
+      "error": "{\"detail\":\"'Index not found'\"}",
+      "isBusy": false,
+      "session": null
+    }
+  }
+}

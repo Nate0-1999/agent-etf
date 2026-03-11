@@ -27,6 +27,7 @@ make migrate
 make test
 make run-api
 make run-web
+make verify-ui
 ```
 
 For the exact local database access model and security rules, read [docs/runbooks/CLOUD_SQL_PROXY.md](/Users/nateoswalt/agent-etf/docs/runbooks/CLOUD_SQL_PROXY.md) before changing any Cloud SQL networking or local DB setup.
@@ -73,6 +74,30 @@ This is not optional documentation. The full operational and security procedure 
 - The right rail is a chat-driven ideation thread; the left side is a decision canvas that fills in as the council resolves specification details.
 - Saved indexes show thesis, holdings, performance windows, benchmark comparison, and rebalance cadence.
 - Model selection is admin-approved: one OpenAI, one Anthropic, and one Google model at a time.
+
+## Browser Verification
+
+- Browser verification uses Playwright against an isolated local test stack with in-memory state.
+- Supported projects in the current core suite:
+  - Chromium desktop
+  - Firefox desktop
+  - WebKit desktop
+  - mobile Chrome emulation
+  - mobile Safari emulation
+- Primary commands:
+
+```bash
+make install-playwright
+make verify-ui
+make verify-ui-headed
+make verify-ui-update-baselines
+make verify-ui-report
+```
+
+- Verification docs:
+  - [VERIFICATION.md](/Users/nateoswalt/agent-etf/docs/architecture/VERIFICATION.md)
+  - [PLAYWRIGHT_VERIFICATION.md](/Users/nateoswalt/agent-etf/docs/runbooks/PLAYWRIGHT_VERIFICATION.md)
+  - [SCENARIO_REGISTRY.md](/Users/nateoswalt/agent-etf/docs/runbooks/SCENARIO_REGISTRY.md)
 
 ## Safety Notes
 

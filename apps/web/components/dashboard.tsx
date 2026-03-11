@@ -20,6 +20,11 @@ import type {
   PendingModelSetProposal,
   TimeframePerformance,
 } from "../lib/types";
+import {
+  appendApiEvent,
+  getTestRunId,
+  publishVerificationState,
+} from "../lib/verification";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 const SAVED_INDEXES_TAB = "saved-indexes";
@@ -33,8 +38,18 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(getTestRunId() ? { "X-Test-Run-Id": getTestRunId() ?? "" } : {}),
       ...(init?.headers ?? {}),
     },
+  });
+
+  appendApiEvent({
+    timestamp: new Date().toISOString(),
+    path,
+    method: init?.method ?? "GET",
+    status: response.status,
+    requestId: response.headers.get("X-Request-Id"),
+    testRunId: response.headers.get("X-Test-Run-Id") ?? getTestRunId(),
   });
 
   if (!response.ok) {
@@ -212,6 +227,43 @@ export function Dashboard() {
     }
   }, [activeSessionId, ensureSessionLoaded, sessionDetails]);
 
+  useEffect(() => {
+    publishVerificationState({
+      route: activeTab === SAVED_INDEXES_TAB ? "saved-indexes" : "ideation",
+      activeTab: activeTab === SAVED_INDEXES_TAB ? SAVED_INDEXES_TAB : "ideation-session",
+      openTabs: openSessions.map((session) => session.title),
+      savedIndexCount: indexes.length,
+      selectedIndexName: selectedIndex?.name ?? indexDetail?.name ?? null,
+      showModelAdmin,
+      pendingModelProposalCount: modelProposals.length,
+      error,
+      isBusy,
+      session: activeSession
+        ? {
+            title: activeSession.title,
+            status: activeSession.status,
+            messageCount: activeMessages.length,
+            councilHeadline: activeSession.council_summary?.headline ?? null,
+            tileStatuses: Object.fromEntries(
+              activeSession.decision_tiles.map((tile) => [tile.key, tile.status]),
+            ),
+          }
+        : null,
+    });
+  }, [
+    activeMessages.length,
+    activeSession,
+    activeTab,
+    error,
+    indexDetail,
+    indexes.length,
+    isBusy,
+    modelProposals.length,
+    openSessions,
+    selectedIndex,
+    showModelAdmin,
+  ]);
+
   const createNewIdeaTab = useCallback(async () => {
     setIsBusy(true);
     setError(null);
@@ -296,8 +348,8 @@ export function Dashboard() {
         next.unshift(converted.session);
         return next;
       });
-      await refreshIndexes(converted.index.id);
       setActiveTab(SAVED_INDEXES_TAB);
+      await refreshIndexes(converted.index.id);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to convert session");
     } finally {
@@ -383,8 +435,8 @@ export function Dashboard() {
   }, [refreshAll]);
 
   return (
-    <main className="workbookApp">
-      <header className="topbar">
+    <main className="workbookApp" data-testid="workbook-app">
+      <header className="topbar" data-testid="topbar">
         <div className="brandBlock">
           <p className="eyebrow">Agentic Indexing</p>
           <h1>Workbook for custom index design</h1>
@@ -395,11 +447,18 @@ export function Dashboard() {
         </div>
 
         <div className="headerControls">
-          <button className="headerButton" onClick={createNewIdeaTab} disabled={isBusy} type="button">
+          <button
+            className="headerButton"
+            data-testid="new-idea-button"
+            onClick={createNewIdeaTab}
+            disabled={isBusy}
+            type="button"
+          >
             + New Idea
           </button>
           <button
             className="modelBadge"
+            data-testid="model-badge-button"
             onClick={() => setShowModelAdmin((current) => !current)}
             type="button"
           >
@@ -415,7 +474,7 @@ export function Dashboard() {
       </header>
 
       {showModelAdmin ? (
-        <section className="adminPanel">
+        <section className="adminPanel" data-testid="model-admin-panel">
           <div>
             <p className="panelLabel">Current approved trio</p>
             {currentModels ? (
@@ -433,10 +492,20 @@ export function Dashboard() {
             ) : null}
           </div>
           <div className="adminActions">
-            <button className="headerButton secondary" onClick={refreshModelRegistry} type="button">
+            <button
+              className="headerButton secondary"
+              data-testid="refresh-model-registry-button"
+              onClick={refreshModelRegistry}
+              type="button"
+            >
               Refresh registry
             </button>
-            <button className="headerButton secondary" onClick={resetLocalRuntime} type="button">
+            <button
+              className="headerButton secondary"
+              data-testid="clear-runtime-button"
+              onClick={resetLocalRuntime}
+              type="button"
+            >
               Clear local runtime data
             </button>
           </div>
@@ -454,6 +523,7 @@ export function Dashboard() {
                   </div>
                   <button
                     className="headerButton"
+                    data-testid={`approve-model-proposal-${proposal.id}`}
                     onClick={() => void approveModelProposal(proposal.id)}
                     type="button"
                   >
@@ -468,9 +538,10 @@ export function Dashboard() {
         </section>
       ) : null}
 
-      <section className="tabbar">
+      <section className="tabbar" data-testid="workbook-tabbar">
         <button
           className={`tab ${activeTab === SAVED_INDEXES_TAB ? "active" : ""}`}
+          data-testid="saved-indexes-tab"
           onClick={() => void activateSavedIndexes()}
           type="button"
         >
@@ -480,6 +551,7 @@ export function Dashboard() {
           <button
             key={session.id}
             className={`tab ${activeTab === session.id ? "active" : ""}`}
+            data-testid={`ideation-tab-${session.id}`}
             onClick={() => setActiveTab(session.id)}
             type="button"
           >
@@ -488,26 +560,32 @@ export function Dashboard() {
         ))}
       </section>
 
-      {error ? <div className="errorBanner">{error}</div> : null}
+      {error ? <div className="errorBanner" data-testid="error-banner">{error}</div> : null}
 
       {activeTab === SAVED_INDEXES_TAB ? (
-        <section className="savedIndexesLayout">
-          <aside className="savedRail sheetPanel">
+        <section className="savedIndexesLayout" data-testid="saved-indexes-layout">
+          <aside className="savedRail sheetPanel" data-testid="saved-indexes-rail">
             <div className="sectionHeader compact">
               <div>
                 <p className="panelLabel">Saved indexes</p>
                 <h2>Library</h2>
               </div>
-              <button className="headerButton secondary" onClick={createNewIdeaTab} type="button">
+              <button
+                className="headerButton secondary"
+                data-testid="new-ideation-tab-button"
+                onClick={createNewIdeaTab}
+                type="button"
+              >
                 New ideation tab
               </button>
             </div>
-            <div className="indexList">
+            <div className="indexList" data-testid="saved-indexes-list">
               {indexes.length === 0 ? <p className="emptyState">No saved indexes yet.</p> : null}
               {indexes.map((index) => (
                 <button
                   key={index.id}
                   className={`indexCard ${selectedIndexId === index.id ? "selected" : ""}`}
+                  data-testid={`saved-index-card-${index.id}`}
                   onClick={() => void selectIndex(index.id)}
                   type="button"
                 >
@@ -519,7 +597,7 @@ export function Dashboard() {
             </div>
           </aside>
 
-          <section className="savedCanvas sheetPanel">
+          <section className="savedCanvas sheetPanel" data-testid="saved-index-detail">
             {indexDetail ? (
               <>
                 <div className="sectionHeader">
@@ -594,7 +672,12 @@ export function Dashboard() {
                     <p className="panelLabel">Next step</p>
                     <p className="microcopy">Open a fresh ideation workbook from this saved index.</p>
                   </div>
-                  <button className="headerButton" onClick={() => void openIndexAsIdea(indexDetail.id)} type="button">
+                  <button
+                    className="headerButton"
+                    data-testid="open-new-ideation-from-index-button"
+                    onClick={() => void openIndexAsIdea(indexDetail.id)}
+                    type="button"
+                  >
                     Open new ideation tab
                   </button>
                 </div>
@@ -609,8 +692,8 @@ export function Dashboard() {
           </section>
         </section>
       ) : (
-        <section className="ideationLayout">
-          <section className="sheetPanel workbookCanvas">
+        <section className="ideationLayout" data-testid="ideation-layout">
+          <section className="sheetPanel workbookCanvas" data-testid="workbook-canvas">
             <div className="sectionHeader">
               <div>
                 <p className="panelLabel">Ideation workbook</p>
@@ -620,7 +703,12 @@ export function Dashboard() {
                 <span className={`pill pill-${activeSession?.status ?? "neutral"}`}>
                   {activeSession ? sessionStatusLabel(activeSession.status) : "loading"}
                 </span>
-                <button className="headerButton secondary" onClick={convertSession} type="button">
+                <button
+                  className="headerButton secondary"
+                  data-testid="convert-session-button"
+                  onClick={convertSession}
+                  type="button"
+                >
                   Convert to saved index
                 </button>
               </div>
@@ -631,9 +719,13 @@ export function Dashboard() {
               <span>{councilCount(activeSession?.council_summary ?? null)}</span>
             </div>
 
-            <div className="tileGrid">
+            <div className="tileGrid" data-testid="decision-tile-grid">
               {activeSession?.decision_tiles.map((tile) => (
-                <article key={tile.key} className={`tileCard tile-${tile.status}`}>
+                <article
+                  key={tile.key}
+                  className={`tileCard tile-${tile.status}`}
+                  data-testid={`decision-tile-${tile.key}`}
+                >
                   <div className="tileHeader">
                     <p className="panelLabel">{tile.title}</p>
                     <span className={`pill pill-${tile.status}`}>{formatLabel(tile.status)}</span>
@@ -650,7 +742,7 @@ export function Dashboard() {
               ))}
             </div>
 
-            <div className="councilPanel">
+            <div className="councilPanel" data-testid="council-panel">
               <div className="sectionHeader compact">
                 <div>
                   <p className="panelLabel">Council summary</p>
@@ -658,6 +750,7 @@ export function Dashboard() {
                 </div>
                 <button
                   className="headerButton secondary"
+                  data-testid="toggle-council-details-button"
                   onClick={() =>
                     setExpandedCouncilTab((current) => (current === activeSessionId ? null : activeSessionId))
                   }
@@ -689,7 +782,7 @@ export function Dashboard() {
             </div>
           </section>
 
-          <aside className="chatRail sheetPanel">
+          <aside className="chatRail sheetPanel" data-testid="chat-rail">
             <div className="sectionHeader compact">
               <div>
                 <p className="panelLabel">Conversation</p>
@@ -698,7 +791,7 @@ export function Dashboard() {
               <span className="microcopy">Pinned right rail</span>
             </div>
 
-            <div className="messageList">
+            <div className="messageList" data-testid="message-list">
               {activeMessages.map((message: IdeationMessage) => (
                 <article key={message.id} className={`messageBubble role-${message.role}`}>
                   <span className="messageRole">{message.role}</span>
@@ -709,12 +802,14 @@ export function Dashboard() {
 
             <form
               className="composer"
+              data-testid="message-composer"
               onSubmit={(event) => {
                 event.preventDefault();
                 void sendMessage();
               }}
             >
               <textarea
+                data-testid="message-input"
                 value={messageDraft}
                 onChange={(event) => setMessageDraft(event.target.value)}
                 placeholder="Describe the thesis, constraints, benchmarks, weighting, or rebalance logic."
@@ -722,7 +817,12 @@ export function Dashboard() {
               />
               <div className="composerActions">
                 <span className="microcopy">The workbook updates after each message.</span>
-                <button className="headerButton" disabled={isBusy || !messageDraft.trim()} type="submit">
+                <button
+                  className="headerButton"
+                  data-testid="send-message-button"
+                  disabled={isBusy || !messageDraft.trim()}
+                  type="submit"
+                >
                   Send
                 </button>
               </div>

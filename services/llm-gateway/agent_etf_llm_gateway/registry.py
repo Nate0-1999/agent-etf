@@ -60,9 +60,13 @@ class OpenRouterModelRegistry:
     def refresh(
         self, store: StrategyStore
     ) -> tuple[list[ModelCatalogEntry], ApprovedModelSet, PendingModelSetProposal | None]:
-        catalog = self.fetch_catalog()
-        store.replace_model_catalog(catalog)
         current = self.ensure_current_model_set(store)
+        catalog = (
+            self._test_refresh_catalog(current)
+            if os.getenv("AGENTIC_TEST_MODE") == "1"
+            else self.fetch_catalog()
+        )
+        store.replace_model_catalog(catalog)
         proposed = self._build_model_set(catalog)
         if self._same_model_set(current, proposed):
             return catalog, current, None
@@ -260,6 +264,38 @@ class OpenRouterModelRegistry:
                 family="Gemini 3",
                 label="Gemini 3.1 Pro",
                 openrouter_slug="gemini-3.1-pro",
+                official_doc_url=_OFFICIAL_DOCS[ModelProviderFamily.google],
+            ),
+        ]
+
+    @staticmethod
+    def _test_refresh_catalog(current: ApprovedModelSet) -> list[ModelCatalogEntry]:
+        return [
+            current.openai_model,
+            current.anthropic_model,
+            current.google_model,
+            ModelCatalogEntry(
+                id="openai-gpt-5.5",
+                provider=ModelProviderFamily.openai,
+                family="GPT-5",
+                label="GPT-5.5",
+                openrouter_slug="gpt-5.5",
+                official_doc_url=_OFFICIAL_DOCS[ModelProviderFamily.openai],
+            ),
+            ModelCatalogEntry(
+                id="anthropic-claude-4.7",
+                provider=ModelProviderFamily.anthropic,
+                family="Claude 4",
+                label="Claude 4.7",
+                openrouter_slug="claude-4.7",
+                official_doc_url=_OFFICIAL_DOCS[ModelProviderFamily.anthropic],
+            ),
+            ModelCatalogEntry(
+                id="google-gemini-3.2-pro",
+                provider=ModelProviderFamily.google,
+                family="Gemini 3",
+                label="Gemini 3.2 Pro",
+                openrouter_slug="gemini-3.2-pro",
                 official_doc_url=_OFFICIAL_DOCS[ModelProviderFamily.google],
             ),
         ]

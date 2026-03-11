@@ -20,3 +20,5 @@ generated_strategies/
 .DS_Store
 coverage/
 .generated/
+apps/web/playwright-report/
+apps/web/test-results/

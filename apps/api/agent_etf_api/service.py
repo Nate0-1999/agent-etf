@@ -30,6 +30,8 @@ from agent_etf_contracts.models import (
     DecisionTile,
     DecisionTileStatus,
     DevResetResponse,
+    DevSeedRequest,
+    DevSeedResponse,
     HoldingsSummary,
     IdeaSpec,
     IdeaStatusResponse,
@@ -59,6 +61,8 @@ from agent_etf_execution import DeterministicStrategyCompiler, ExecutionService
 from agent_etf_llm_gateway import OpenRouterModelRegistry, OpenRouterModelService
 from agent_etf_research import ExaSearchProvider, ResearchService
 from agent_etf_research.heavy_metals import derive_heavy_metal_profile
+
+from apps.api.agent_etf_api.observability import current_request_id, current_test_run_id, recorder
 
 _TILE_TITLES = [
     ("thesis", "Thesis"),
@@ -90,6 +94,15 @@ class ControlPlaneService:
         self.execution = ExecutionService(broker=self.broker)
 
         self.model_registry.ensure_current_model_set(self.store)
+
+    def _record_event(self, action: str, payload: dict[str, Any]) -> None:
+        recorder.record(
+            category="service",
+            action=action,
+            request_id=current_request_id(),
+            test_run_id=current_test_run_id(),
+            payload=payload,
+        )
 
     def _active_model_set(self) -> ApprovedModelSet:
         return self.model_registry.ensure_current_model_set(self.store)
@@ -536,6 +549,10 @@ class ControlPlaneService:
         )
         self.store.save_ideation_session(session)
         self.store.save_ideation_message(welcome)
+        self._record_event(
+            "create_ideation_session",
+            {"session_id": session.id, "title": session.title, "user_id": session.user_id},
+        )
         return IdeationSessionDetailResponse(session=session, messages=[welcome])
 
     def list_ideation_sessions(self, user_id: str = "operator") -> IdeationSessionListResponse:
@@ -600,6 +617,16 @@ class ControlPlaneService:
         self.store.save_ideation_session(next_session)
         self.store.save_idea(idea)
         self.store.save_idea_gaps(idea.id, gaps)
+        self._record_event(
+            "session_state_recomputed",
+            {
+                "session_id": session.id,
+                "status": next_session.status,
+                "candidate_count": len(candidates),
+                "gap_count": len(gaps),
+                "council_passed": result.passed,
+            },
+        )
         return next_session, candidates, result.reports, gaps
 
     def _council_headline(
@@ -778,6 +805,14 @@ class ControlPlaneService:
             content=self._assistant_reply(next_session, candidates, gaps),
         )
         self.store.save_ideation_message(assistant)
+        self._record_event(
+            "append_ideation_message",
+            {
+                "session_id": session_id,
+                "message_length": len(user_message.content),
+                "resulting_status": next_session.status,
+            },
+        )
         return IdeationSessionDetailResponse(
             session=next_session,
             messages=self.store.list_ideation_messages(session_id),
@@ -839,6 +874,15 @@ class ControlPlaneService:
             }
         )
         self.store.save_ideation_session(updated_session)
+        self._record_event(
+            "convert_ideation_session",
+            {
+                "session_id": session_id,
+                "index_id": index.id,
+                "strategy_id": strategy.id,
+                "holding_count": len(index.holdings),
+            },
+        )
         return ConvertIdeationSessionResponse(session=updated_session, index=index)
 
     def list_indexes(self) -> IndexListResponse:
@@ -899,6 +943,10 @@ class ControlPlaneService:
             ),
         )
         self.store.save_ideation_message(seeded)
+        self._record_event(
+            "open_ideation_from_index",
+            {"index_id": index_id, "session_id": session.id},
+        )
         return self.append_ideation_message(
             session.id,
             AppendIdeationMessageRequest(content=index.thesis_summary),
@@ -912,13 +960,90 @@ class ControlPlaneService:
 
     def refresh_models(self) -> ModelRefreshResponse:
         catalog, current, proposal = self.model_registry.refresh(self.store)
+        self._record_event(
+            "refresh_models",
+            {
+                "catalog_size": len(catalog),
+                "current_model_set_id": current.id,
+                "proposal_id": None if proposal is None else proposal.id,
+            },
+        )
         return ModelRefreshResponse(catalog=catalog, current=current, proposal=proposal)
 
     def approve_model_proposal(self, proposal_id: str) -> CurrentModelSetResponse:
         model_set = self.model_registry.approve(self.store, proposal_id)
+        self._record_event(
+            "approve_model_proposal",
+            {"proposal_id": proposal_id, "model_set_id": model_set.id},
+        )
         return CurrentModelSetResponse(model_set=model_set)
 
     def dev_reset(self) -> DevResetResponse:
         self.store.clear_runtime_data()
+        recorder.clear()
         self.model_registry.ensure_current_model_set(self.store)
+        self._record_event("dev_reset", {"cleared": True})
         return DevResetResponse(cleared=True, message="Local runtime data cleared.")
+
+    def dev_seed(self, request: DevSeedRequest) -> DevSeedResponse:
+        scenario = request.scenario.strip().lower()
+        self.store.clear_runtime_data()
+        recorder.clear()
+        self.model_registry.ensure_current_model_set(self.store)
+
+        if scenario == "blank":
+            self._record_event("dev_seed", {"scenario": scenario})
+            return DevSeedResponse(scenario=scenario, message="Blank runtime fixture loaded.")
+
+        session = self.create_ideation_session(
+            CreateIdeationSessionRequest(user_id="operator", title="Seeded Idea")
+        )
+
+        if scenario == "draft_session":
+            seeded = self.append_ideation_message(
+                session.session.id,
+                AppendIdeationMessageRequest(
+                    content=(
+                        "Build a quality-focused industrial innovation index using liquid ETFs "
+                        "and large-cap equities with monthly review."
+                    )
+                ),
+            )
+            self._record_event(
+                "dev_seed",
+                {"scenario": scenario, "session_id": seeded.session.id},
+            )
+            return DevSeedResponse(
+                scenario=scenario,
+                created_session_id=seeded.session.id,
+                message="Draft ideation session fixture loaded.",
+            )
+
+        if scenario == "saved_index":
+            seeded = self.append_ideation_message(
+                session.session.id,
+                AppendIdeationMessageRequest(
+                    content=(
+                        "Build a quality-focused industrial innovation index using liquid ETFs "
+                        "and large-cap equities, equal weight, monthly review, benchmarked "
+                        "against the S&P 500 and gold."
+                    )
+                ),
+            )
+            converted = self.convert_ideation_session(seeded.session.id)
+            self._record_event(
+                "dev_seed",
+                {
+                    "scenario": scenario,
+                    "session_id": converted.session.id,
+                    "index_id": converted.index.id,
+                },
+            )
+            return DevSeedResponse(
+                scenario=scenario,
+                created_session_id=converted.session.id,
+                created_index_id=converted.index.id,
+                message="Saved index fixture loaded.",
+            )
+
+        raise ValueError(f"Unknown dev seed scenario: {request.scenario}")

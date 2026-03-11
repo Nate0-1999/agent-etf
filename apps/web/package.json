@@ -7,7 +7,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "install:playwright": "playwright install --with-deps",
+    "test:e2e": "playwright test --grep @core",
+    "test:e2e:all": "playwright test",
+    "test:e2e:headed": "playwright test --grep @core --headed",
+    "test:e2e:update": "UPDATE_VERIFICATION_BASELINES=1 playwright test --grep @core",
+    "test:e2e:report": "node tests/e2e/report-latest.mjs"
   },
   "dependencies": {
     "next": "14.2.5",
@@ -15,6 +21,7 @@
     "react-dom": "18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.53.1",
     "@types/node": "20.14.12",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",

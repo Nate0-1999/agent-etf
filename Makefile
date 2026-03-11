@@ -1,13 +1,16 @@
 PYTHON ?= .venv/bin/python
 PIP ?= .venv/bin/pip
 
-.PHONY: install-py install-web lint typecheck test migrate db-proxy run-api run-web run-worker
+.PHONY: install-py install-web lint typecheck test migrate db-proxy run-api run-web run-worker verify-ui verify-ui-all verify-ui-headed verify-ui-update-baselines verify-ui-report
 
 install-py:
 	$(PIP) install -r requirements-dev.txt
 
 install-web:
 	cd apps/web && npm install
+
+install-playwright:
+	cd apps/web && npm run install:playwright
 
 lint:
 	$(PYTHON) -m ruff check .
@@ -32,3 +35,18 @@ run-web:
 
 run-worker:
 	$(PYTHON) -m workers.temporal.agent_etf_workflows.worker
+
+verify-ui:
+	cd apps/web && npm run test:e2e
+
+verify-ui-all:
+	cd apps/web && npm run test:e2e:all
+
+verify-ui-headed:
+	cd apps/web && npm run test:e2e:headed
+
+verify-ui-update-baselines:
+	cd apps/web && npm run test:e2e:update
+
+verify-ui-report:
+	cd apps/web && npm run test:e2e:report

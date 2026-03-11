@@ -184,6 +184,33 @@ def test_dev_reset_clears_sessions_and_indexes() -> None:
     assert indexes.json()["indexes"] == []
 
 
+def test_dev_seed_saved_index_creates_fixture_and_events() -> None:
+    client, _ = new_client()
+
+    seeded = client.post("/dev/seed", json={"scenario": "saved_index"})
+    assert seeded.status_code == 200
+    payload = seeded.json()
+    assert payload["created_session_id"] is not None
+    assert payload["created_index_id"] is not None
+
+    indexes = client.get("/indexes")
+    assert indexes.status_code == 200
+    assert len(indexes.json()["indexes"]) == 1
+
+    events = client.get("/dev/events")
+    assert events.status_code == 200
+    assert any(event["action"] == "dev_seed" for event in events.json()["events"])
+
+
+def test_request_id_header_is_returned() -> None:
+    client, _ = new_client()
+
+    response = client.get("/healthz", headers={"X-Test-Run-Id": "test-run-123"})
+    assert response.status_code == 200
+    assert response.headers["X-Request-Id"].startswith("req-")
+    assert response.headers["X-Test-Run-Id"] == "test-run-123"
+
+
 def test_strategy_summary_no_longer_exposes_artifact() -> None:
     client, _ = new_client()
     create = client.post(

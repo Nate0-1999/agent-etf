@@ -255,6 +255,8 @@ class InMemoryStore(StrategyStore):
         self.ideation_sessions.clear()
         self.ideation_messages.clear()
         self.indexes.clear()
+        self.model_catalog.clear()
+        self.current_model_set = None
         self.model_proposals.clear()
 
 
@@ -570,6 +572,8 @@ class PostgresStore(StrategyStore):
             "ideation_messages",
             "ideation_sessions",
             "indexes",
+            "active_model_sets",
+            "model_catalog",
             "model_set_proposals",
         ]
         with self._connection() as connection:

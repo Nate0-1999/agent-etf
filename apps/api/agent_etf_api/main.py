@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+from collections.abc import Awaitable, Callable
 from typing import cast
 
 from bootstrap_paths import add_project_paths
@@ -22,7 +24,10 @@ from agent_etf_contracts.models import (
     CreateIdeationSessionRequest,
     CreateStrategyFromIdeaResponse,
     CurrentModelSetResponse,
+    DevEventListResponse,
     DevResetResponse,
+    DevSeedRequest,
+    DevSeedResponse,
     IdeaStatusResponse,
     IdeationSessionDetailResponse,
     IdeationSessionListResponse,
@@ -36,15 +41,23 @@ from agent_etf_contracts.models import (
     StrategyListResponse,
     StrategySummaryResponse,
 )
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from apps.api.agent_etf_api.observability import (
+    make_request_id,
+    recorder,
+    reset_request_context,
+    set_request_context,
+)
 from apps.api.agent_etf_api.service import ControlPlaneService
 
 app = FastAPI(title="Agentic Indexing API", version="0.2.0")
 allowed_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3100",
+    "http://127.0.0.1:3100",
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -54,6 +67,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 service = ControlPlaneService()
+
+
+def _assert_dev_routes_enabled() -> None:
+    if os.getenv("AGENTIC_ENV", "development") == "production":
+        raise HTTPException(status_code=403, detail="Dev routes are disabled in production mode")
+
+
+@app.middleware("http")
+async def request_observability(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    request_id = request.headers.get("X-Request-Id") or make_request_id()
+    test_run_id = request.headers.get("X-Test-Run-Id")
+    tokens = set_request_context(request_id, test_run_id)
+    try:
+        response = await call_next(request)
+    except Exception:
+        recorder.record(
+            category="request",
+            action="unhandled_exception",
+            request_id=request_id,
+            test_run_id=test_run_id,
+            route=request.url.path,
+            status_code=500,
+            payload={"method": request.method},
+        )
+        reset_request_context(tokens)
+        raise
+    response.headers["X-Request-Id"] = request_id
+    if test_run_id:
+        response.headers["X-Test-Run-Id"] = test_run_id
+    recorder.record(
+        category="request",
+        action="completed",
+        request_id=request_id,
+        test_run_id=test_run_id,
+        route=request.url.path,
+        status_code=response.status_code,
+        payload={"method": request.method},
+    )
+    reset_request_context(tokens)
+    return response
 
 
 @app.get("/healthz")
@@ -263,7 +319,23 @@ def approve_model_proposal(proposal_id: str) -> CurrentModelSetResponse:
 
 @app.post("/dev/reset", response_model=DevResetResponse)
 def dev_reset() -> DevResetResponse:
+    _assert_dev_routes_enabled()
     return service.dev_reset()
+
+
+@app.post("/dev/seed", response_model=DevSeedResponse)
+def dev_seed(payload: DevSeedRequest) -> DevSeedResponse:
+    _assert_dev_routes_enabled()
+    try:
+        return service.dev_seed(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/dev/events", response_model=DevEventListResponse)
+def dev_events(test_run_id: str | None = None) -> DevEventListResponse:
+    _assert_dev_routes_enabled()
+    return DevEventListResponse(events=recorder.list_events(test_run_id=test_run_id))
 
 
 @app.post("/broker-connections/ibkr/link")
